@@ -1,5 +1,7 @@
 # Retirement Planner
 
+**Live:** https://mikecoker.github.io/retirement-planner/
+
 A client-side retirement planning tool built with React and TypeScript. All calculations run in the browser — no data is sent to any server.
 
 ## Features
@@ -32,6 +34,12 @@ Open [http://localhost:5173](http://localhost:5173).
 npm run build    # type-check + Vite bundle → dist/
 npm run preview  # serve the dist/ build locally
 ```
+
+## Deployment
+
+Pushing to `main` automatically deploys to GitHub Pages via the workflow in `.github/workflows/deploy.yml`. The workflow builds with `VITE_BASE_PATH=/retirement-planner/` and deploys the `dist/` output using the GitHub Pages API.
+
+To enable GitHub Pages on a new repo: **Settings → Pages → Source → GitHub Actions**.
 
 ## Project Structure
 
