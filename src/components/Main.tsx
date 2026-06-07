@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { InputParams, ProjectionRow } from '../types';
 import { Chart as ChartJS, type ChartData, type ChartOptions } from 'chart.js';
 import {
@@ -28,6 +28,9 @@ interface MainProps {
   metrics: { m1: string; m2: string; m3: string };
   optimization: import('../optimizer').OptimizationOutput | null;
   optTimestamp: number;
+  conversionSchedule: Record<number, number> | null;
+  onApplySchedule: (schedule: Record<number, number>) => void;
+  onClearSchedule: () => void;
 }
 
 const fmt = (n: number): string => {
@@ -40,7 +43,10 @@ const fmt = (n: number): string => {
 
 const pct = (n: number): string => (n * 100).toFixed(1) + '%';
 
-const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metrics, optimization, optTimestamp }) => {
+type OptimizerGoal = 'tax' | 'portfolio' | 'peakrate';
+
+const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metrics, optimization, optTimestamp, conversionSchedule, onApplySchedule, onClearSchedule }) => {
+  const [optimizerGoal, setOptimizerGoal] = useState<OptimizerGoal>('tax');
   const retireIn = Math.max(1, inputs.retireAge - inputs.age);
   const retRows = rows.slice(retireIn);
 
@@ -405,16 +411,16 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                   <th>Spending</th>
                   <th>Taxes</th>
                   <th>Net</th>
-                  <th title="Net excluding Roth conversion (conversion is a trad→Roth transfer, not spendable cash)">Net Spendable</th>
+                  <th title="Non-conversion income minus spending and non-conversion taxes — true cash available for living expenses">Net Spendable</th>
                 </tr>
               </thead>
               <tbody>
                 {retRows.map(r => {
                   const totalIn = r.ss + r.spouseSs + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW;
                   const net = totalIn - r.totalSpending - r.totalTax;
-                  const netSpendable = totalIn - r.conv - r.totalSpending - r.totalTax;
+                  const netSpendable = totalIn - r.conv - r.totalSpending - (r.totalTax - r.convTax);
                   return (
-                    <tr key={r.age} style={netSpendable < -500 ? { background: '#FFF5F5' } : undefined}>
+                    <tr key={r.age} style={netSpendable < -2000 ? { background: '#FFF5F5' } : undefined}>
                       <td>{r.age}</td>
                       <td>{r.ss + r.spouseSs > 0 ? fmt(r.ss + r.spouseSs) : '—'}</td>
                       <td>{r.rmd > 0 ? fmt(r.rmd) : '—'}</td>
@@ -429,7 +435,7 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                       <td style={{ color: net < -500 ? '#C0392B' : net > 500 ? '#1D9E75' : undefined }}>
                         {net >= 0 ? '+' : ''}{fmt(net)}
                       </td>
-                      <td style={{ color: netSpendable < -500 ? '#C0392B' : netSpendable > 500 ? '#1D9E75' : undefined, fontWeight: 500 }}>
+                      <td style={{ color: netSpendable < -2000 ? '#C0392B' : netSpendable > 500 ? '#1D9E75' : undefined, fontWeight: 500 }}>
                         {netSpendable >= 0 ? '+' : ''}{fmt(netSpendable)}
                       </td>
                     </tr>
@@ -655,125 +661,195 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
       {activeTab === 'optimizer' && (
         <div className="chart-card">
           <div className="chart-title">Roth Conversion Optimizer <span className="opt-timestamp">Updated {new Date(optTimestamp).toLocaleTimeString()}</span></div>
-          {optimization ? (
-            <>
-              {/* Recommendation banner */}
-              <div className="optimizer-banner">
-                <div className="optimizer-rec-label">Recommended strategy</div>
-                <div className="optimizer-rec-name">{optimization.best.strategy.name}</div>
-                <div className="optimizer-rec-desc">{optimization.best.strategy.description}</div>
-                <div className="optimizer-rec-params">
-                  <span className="opt-param">Target bracket: <strong>{['10%','12%','22%','24%'][optimization.recommendedBracket]}</strong></span>
-                  <span className="opt-param">Convert until age: <strong>{optimization.recommendedUntilAge || 'N/A'}</strong></span>
-                  <span className="opt-param">Avg annual: <strong>{fmt(optimization.recommendedAvgAnnual)}/yr</strong></span>
-                </div>
-                <div className="optimizer-savings">
-                  {optimization.savingsVsCurrent > 0
-                    ? `Saves ${fmt(optimization.savingsVsCurrent)} in lifetime taxes vs your current settings`
-                    : optimization.savingsVsBaseline > 0
-                    ? `Saves ${fmt(optimization.savingsVsBaseline)} vs no conversions`
-                    : 'No conversion strategy beats the no-conversion baseline'}
-                </div>
-              </div>
+          {optimization ? (() => {
+            const activeBest = optimizerGoal === 'tax' ? optimization.bestByTax
+              : optimizerGoal === 'portfolio' ? optimization.bestByPortfolio
+              : optimization.bestByPeakRate;
+            const activeSchedule = activeBest.schedule;
+            const activeScheduleYears = Object.keys(activeSchedule).map(Number).sort((a, b) => a - b);
+            const activeUntilAge = activeScheduleYears.length > 0 ? Math.max(...activeScheduleYears) : 0;
+            const activeAvgAnnual = activeScheduleYears.length > 0
+              ? Math.round(Object.values(activeSchedule).reduce((a, b) => a + b, 0) / activeScheduleYears.length)
+              : 0;
 
-              {/* Comparison table */}
-              <div className="optimizer-table-wrap">
-                <table className="optimizer-table">
-                  <thead>
-                    <tr>
-                      <th>Strategy</th>
-                      <th>Lifetime Tax</th>
-                      <th>Federal</th>
-                      <th>IRMAA</th>
-                      <th>Peak Marginal</th>
-                      <th>Terminal Trad</th>
-                      <th>Terminal Roth</th>
-                      <th>Terminal Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {optimization.strategies.map((s, i) => {
-                      const isBest = s.strategy.name === optimization.best.strategy.name;
-                      const isBaseline = s.strategy.name === optimization.baseline.strategy.name;
-                      const isCurrent = s.strategy.name === 'Your current settings';
-                      return (
-                        <tr key={i} className={isBest ? 'opt-row-best' : isBaseline ? 'opt-row-baseline' : isCurrent ? 'opt-row-current' : ''}>
-                          <td>
-                            {isBest && <span className="opt-badge-best">BEST</span>}
-                            {isBaseline && <span className="opt-badge-base">BASE</span>}
-                            {isCurrent && <span className="opt-badge-current">YOU</span>}
-                            {' '}{s.strategy.name}
-                          </td>
-                          <td>{fmt(s.lifetimeTotalTax)}</td>
-                          <td>{fmt(s.lifetimeFederalTax)}</td>
-                          <td>{fmt(s.lifetimeIRMAA)}</td>
-                          <td>{pct(s.peakMarginalRate)}</td>
-                          <td>{fmt(s.terminalTrad)}</td>
-                          <td>{fmt(s.terminalRoth)}</td>
-                          <td>{fmt(s.terminalTotal)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+            const savingsText = (() => {
+              if (optimizerGoal === 'tax') {
+                const vsCurrent = optimization.currentSettings.lifetimeTotalTax - activeBest.lifetimeTotalTax;
+                const vsBaseline = optimization.baseline.lifetimeTotalTax - activeBest.lifetimeTotalTax;
+                if (vsCurrent > 0) return `Saves ${fmt(vsCurrent)} in lifetime taxes vs your current settings`;
+                if (vsBaseline > 0) return `Saves ${fmt(vsBaseline)} in lifetime taxes vs no conversions`;
+                return 'No conversion strategy reduces lifetime taxes in this scenario';
+              } else if (optimizerGoal === 'portfolio') {
+                const gain = activeBest.terminalTotal - optimization.baseline.terminalTotal;
+                if (gain > 0) return `Terminal portfolio ${fmt(gain)} larger vs no conversions`;
+                return 'Conversions do not improve terminal portfolio — early tax payments reduce compounding';
+              } else {
+                const rateReduction = optimization.baseline.peakMarginalRate - activeBest.peakMarginalRate;
+                const taxSavings = optimization.baseline.lifetimeTotalTax - activeBest.lifetimeTotalTax;
+                if (rateReduction > 0) return `Reduces peak marginal rate from ${pct(optimization.baseline.peakMarginalRate)} to ${pct(activeBest.peakMarginalRate)}, saving ${fmt(taxSavings)} in lifetime taxes`;
+                return 'No conversion strategy reduces your peak marginal rate in this scenario';
+              }
+            })();
 
-              {/* Lifetime tax comparison chart */}
-              <div className="chart-subtitle">Lifetime total tax comparison</div>
-              <div style={{ position: 'relative', width: '100%', height: '200px' }}>
-                <Bar
-                  data={{
-                    labels: optimization.strategies.map(s => s.strategy.name),
-                    datasets: [{
-                      label: 'Lifetime tax',
-                      data: optimization.strategies.map(s => s.lifetimeTotalTax),
-                      backgroundColor: optimization.strategies.map(s =>
-                        s.strategy.name === optimization.best.strategy.name
-                          ? '#1D9E75'
-                          : s.strategy.name === optimization.baseline.strategy.name
-                            ? '#E74C3C'
-                            : s.strategy.name === 'Your current settings'
-                              ? '#3498DB'
-                              : '#378ADD'
-                      ),
-                    }],
-                  }}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    animation: false,
-                    indexAxis: 'y',
-                    plugins: {
-                      legend: { display: false },
-                      tooltip: {
-                        callbacks: {
-                          label: (ctx: any) => fmt(ctx.parsed.x),
+            const GOAL_OPTIONS: { id: OptimizerGoal; label: string; title: string }[] = [
+              { id: 'tax', label: 'Minimize taxes', title: 'Minimize total taxes paid from retirement through life expectancy' },
+              { id: 'portfolio', label: 'Maximize portfolio', title: 'Maximize total portfolio value at end of plan — accounts for opportunity cost of paying taxes early' },
+              { id: 'peakrate', label: 'Smooth brackets', title: 'Minimize peak marginal rate — prevents large RMDs from spiking you into a high bracket. Ties broken by lowest lifetime tax.' },
+            ];
+
+            const chartMetric = optimizerGoal === 'portfolio'
+              ? { key: 'terminalTotal' as const, label: 'Terminal portfolio' }
+              : optimizerGoal === 'peakrate'
+              ? { key: 'lifetimeTotalTax' as const, label: 'Lifetime total tax' }
+              : { key: 'lifetimeTotalTax' as const, label: 'Lifetime total tax' };
+
+            return (
+              <>
+                {/* Goal selector */}
+                <div style={{ display: 'flex', gap: '4px', margin: '0 0 1rem 0', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', color: '#666', alignSelf: 'center', marginRight: '4px' }}>Optimize for:</span>
+                  {GOAL_OPTIONS.map(opt => (
+                    <button
+                      key={opt.id}
+                      title={opt.title}
+                      onClick={() => setOptimizerGoal(opt.id)}
+                      style={{
+                        padding: '4px 12px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        border: optimizerGoal === opt.id ? '2px solid #1A5276' : '1px solid #ccc',
+                        borderRadius: '4px',
+                        background: optimizerGoal === opt.id ? '#EAF4FB' : '#fff',
+                        color: optimizerGoal === opt.id ? '#1A5276' : '#555',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Recommendation banner */}
+                <div className="optimizer-banner">
+                  <div className="optimizer-rec-label">
+                    {optimizerGoal === 'tax' ? 'Lowest lifetime taxes' : optimizerGoal === 'portfolio' ? 'Largest terminal portfolio' : 'Smoothest tax brackets'}
+                  </div>
+                  <div className="optimizer-rec-name">{activeBest.strategy.name}</div>
+                  <div className="optimizer-rec-desc">{activeBest.strategy.description}</div>
+                  {activeScheduleYears.length > 0 && (
+                    <div className="optimizer-rec-params">
+                      <span className="opt-param">Target bracket: <strong>{['10%','12%','22%','24%'][activeBest.strategy.targetBracket]}</strong></span>
+                      <span className="opt-param">Convert until age: <strong>{activeUntilAge || 'N/A'}</strong></span>
+                      <span className="opt-param">Avg annual: <strong>{fmt(activeAvgAnnual)}/yr</strong></span>
+                    </div>
+                  )}
+                  <div className="optimizer-savings">{savingsText}</div>
+                </div>
+
+                {/* Comparison table */}
+                <div className="optimizer-table-wrap">
+                  <table className="optimizer-table">
+                    <thead>
+                      <tr>
+                        <th>Strategy</th>
+                        <th>Lifetime Tax</th>
+                        <th>IRMAA</th>
+                        <th>Peak Marginal</th>
+                        <th>Terminal Trad</th>
+                        <th>Terminal Roth</th>
+                        <th>Terminal Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {optimization.strategies.map((s, i) => {
+                        const isBest = s.strategy.name === activeBest.strategy.name;
+                        const isBaseline = s.strategy.name === optimization.baseline.strategy.name;
+                        const isCurrent = s.strategy.name === 'Your current settings';
+                        return (
+                          <tr key={i} className={isBest ? 'opt-row-best' : isBaseline ? 'opt-row-baseline' : isCurrent ? 'opt-row-current' : ''}>
+                            <td>
+                              {isBest && <span className="opt-badge-best">BEST</span>}
+                              {isBaseline && <span className="opt-badge-base">BASE</span>}
+                              {isCurrent && <span className="opt-badge-current">YOU</span>}
+                              {' '}{s.strategy.name}
+                            </td>
+                            <td>{fmt(s.lifetimeTotalTax)}</td>
+                            <td>{fmt(s.lifetimeIRMAA)}</td>
+                            <td>{pct(s.peakMarginalRate)}</td>
+                            <td>{fmt(s.terminalTrad)}</td>
+                            <td>{fmt(s.terminalRoth)}</td>
+                            <td>{fmt(s.terminalTotal)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Comparison chart — metric adapts to goal */}
+                <div className="chart-subtitle">{chartMetric.label} by strategy</div>
+                <div style={{ position: 'relative', width: '100%', height: '200px' }}>
+                  <Bar
+                    data={{
+                      labels: optimization.strategies.map(s => s.strategy.name),
+                      datasets: [{
+                        label: chartMetric.label,
+                        data: optimization.strategies.map(s => s[chartMetric.key]),
+                        backgroundColor: optimization.strategies.map(s =>
+                          s.strategy.name === activeBest.strategy.name
+                            ? '#1D9E75'
+                            : s.strategy.name === optimization.baseline.strategy.name
+                              ? '#E74C3C'
+                              : s.strategy.name === 'Your current settings'
+                                ? '#3498DB'
+                                : '#378ADD'
+                        ),
+                      }],
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      animation: false,
+                      indexAxis: 'y',
+                      plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx: any) => fmt(ctx.parsed.x) } },
+                      },
+                      scales: {
+                        x: {
+                          ticks: { callback: (v: number | string) => fmt(Number(v)), font: { size: 10 } },
+                          grid: { color: 'rgba(128,128,128,0.1)' },
                         },
+                        y: { ticks: { font: { size: 10 } }, grid: { display: false } },
                       },
-                    },
-                    scales: {
-                      x: {
-                        ticks: { callback: (v: number | string) => fmt(Number(v)), font: { size: 10 } },
-                        grid: { color: 'rgba(128,128,128,0.1)' },
-                      },
-                      y: {
-                        ticks: { font: { size: 10 } },
-                        grid: { display: false },
-                      },
-                    },
-                  } as any}
-                />
-              </div>
+                    } as any}
+                  />
+                </div>
 
-              {/* Year-by-year conversion schedule for recommended strategy */}
-              <div className="chart-subtitle">Recommended conversion schedule</div>
-              {(() => {
-                const schedule = optimization.recommendedSchedule;
-                const ages = Object.keys(schedule).map(Number).sort((a, b) => a - b);
-                if (ages.length === 0) {
-                  return <div className="note">No conversions recommended for this scenario.</div>;
-                }
-                return (
+                {/* Year-by-year conversion schedule for active strategy */}
+                <div className="chart-subtitle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Recommended conversion schedule</span>
+                  {conversionSchedule ? (
+                    <span style={{ fontSize: '11px', color: '#27AE60', fontWeight: 600 }}>
+                      ✓ Applied to projection —{' '}
+                      <button onClick={onClearSchedule} style={{ background: 'none', border: 'none', color: '#E74C3C', cursor: 'pointer', fontSize: '11px', padding: 0, fontWeight: 600 }}>
+                        Reset to sidebar
+                      </button>
+                    </span>
+                  ) : (
+                    activeScheduleYears.length > 0 && (
+                      <button
+                        onClick={() => onApplySchedule(activeSchedule)}
+                        style={{ fontSize: '11px', padding: '3px 10px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
+                      >
+                        Apply to projection
+                      </button>
+                    )
+                  )}
+                </div>
+                {activeScheduleYears.length === 0 ? (
+                  <div className="note">No conversions recommended for this scenario.</div>
+                ) : (
                   <div className="optimizer-table-wrap">
                     <table className="optimizer-table opt-schedule-table">
                       <thead>
@@ -785,13 +861,14 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                         </tr>
                       </thead>
                       <tbody>
-                        {ages.map((age, i) => {
-                          const cum = ages.slice(0, i + 1).reduce((s, a) => s + schedule[a], 0);
-                          const tradEst = optimization.best.rows.find(r => r.age === age)?.trad ?? 0;
+                        {activeScheduleYears.map((age, i) => {
+                          const cum = activeScheduleYears.slice(0, i + 1).reduce((s, a) => s + activeSchedule[a], 0);
+                          const tradEst = activeBest.rows.find(r => r.age === age)?.trad ?? 0;
+                          const isActive = conversionSchedule && conversionSchedule[age] !== undefined;
                           return (
-                            <tr key={age}>
+                            <tr key={age} style={{ background: isActive ? '#EBF5FB' : undefined }}>
                               <td>{age}</td>
-                              <td>{fmt(schedule[age])}</td>
+                              <td>{fmt(activeSchedule[age])}</td>
                               <td>{fmt(cum)}</td>
                               <td>{fmt(tradEst)}</td>
                             </tr>
@@ -800,48 +877,100 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                       </tbody>
                     </table>
                   </div>
-                );
-              })()}
+                )}
 
-              {/* Savings breakdown */}
-              {optimization.savingsVsBaseline > 0 && (
+                {/* Savings breakdown */}
                 <div className="detail-panel" style={{ marginTop: '1rem' }}>
-                  <div className="detail-section-title">Where the savings come from</div>
-                  <div className="detail-grid">
-                    <div className="detail-item">
-                      <div className="detail-label">Federal tax saved</div>
-                      <div className="detail-value">
-                        {fmt(optimization.baseline.lifetimeFederalTax - optimization.best.lifetimeFederalTax)}
-                      </div>
-                    </div>
-                    <div className="detail-item">
-                      <div className="detail-label">IRMAA saved</div>
-                      <div className="detail-value">
-                        {fmt(optimization.baseline.lifetimeIRMAA - optimization.best.lifetimeIRMAA)}
-                      </div>
-                    </div>
-                    <div className="detail-item">
-                      <div className="detail-label">Peak marginal rate reduction</div>
-                      <div className="detail-value">
-                        {pct(optimization.baseline.peakMarginalRate)} → {pct(optimization.best.peakMarginalRate)}
-                      </div>
-                    </div>
-                    <div className="detail-item">
-                      <div className="detail-label">Roth at death</div>
-                      <div className="detail-value">
-                        {fmt(optimization.baseline.terminalRoth)} → {fmt(optimization.best.terminalRoth)}
-                      </div>
-                    </div>
+                  <div className="detail-section-title">
+                    {optimizerGoal === 'portfolio' ? 'Portfolio impact vs no conversions' : 'Where the savings come from'}
                   </div>
-                  <div className="note">
-                    Converting early at lower rates reduces future RMDs, which lowers marginal rates during RMD years,
-                    which reduces SS taxation and IRMAA surcharges. The optimal strategy fills brackets when current
-                    rates are lower than expected future rates.
-                  </div>
+                  {optimizerGoal === 'portfolio' ? (
+                    <>
+                      <div className="detail-grid">
+                        <div className="detail-item">
+                          <div className="detail-label">Terminal portfolio gain</div>
+                          <div className="detail-value" style={{ color: activeBest.terminalTotal >= optimization.baseline.terminalTotal ? '#1D9E75' : '#C0392B' }}>
+                            {activeBest.terminalTotal >= optimization.baseline.terminalTotal ? '+' : ''}{fmt(activeBest.terminalTotal - optimization.baseline.terminalTotal)}
+                          </div>
+                        </div>
+                        <div className="detail-item">
+                          <div className="detail-label">Roth at death</div>
+                          <div className="detail-value">{fmt(optimization.baseline.terminalRoth)} → {fmt(activeBest.terminalRoth)}</div>
+                        </div>
+                        <div className="detail-item">
+                          <div className="detail-label">Traditional IRA at death</div>
+                          <div className="detail-value">{fmt(optimization.baseline.terminalTrad)} → {fmt(activeBest.terminalTrad)}</div>
+                        </div>
+                        <div className="detail-item">
+                          <div className="detail-label">Lifetime taxes paid</div>
+                          <div className="detail-value">{fmt(activeBest.lifetimeTotalTax)}</div>
+                        </div>
+                      </div>
+                      <div className="note">
+                        Terminal total includes pre-tax traditional IRA balances. Maximizing portfolio value
+                        often favors fewer conversions because tax dollars paid early stop compounding. However,
+                        Roth assets are more valuable to heirs since inherited traditional IRAs must be withdrawn
+                        (and taxed) within 10 years.
+                      </div>
+                    </>
+                  ) : optimizerGoal === 'peakrate' ? (
+                    <>
+                      <div className="detail-grid">
+                        <div className="detail-item">
+                          <div className="detail-label">Peak marginal rate</div>
+                          <div className="detail-value">{pct(optimization.baseline.peakMarginalRate)} → {pct(activeBest.peakMarginalRate)}</div>
+                        </div>
+                        <div className="detail-item">
+                          <div className="detail-label">Lifetime taxes saved</div>
+                          <div className="detail-value">{fmt(optimization.baseline.lifetimeTotalTax - activeBest.lifetimeTotalTax)}</div>
+                        </div>
+                        <div className="detail-item">
+                          <div className="detail-label">IRMAA saved</div>
+                          <div className="detail-value">{fmt(optimization.baseline.lifetimeIRMAA - activeBest.lifetimeIRMAA)}</div>
+                        </div>
+                        <div className="detail-item">
+                          <div className="detail-label">Terminal portfolio</div>
+                          <div className="detail-value">{fmt(optimization.baseline.terminalTotal)} → {fmt(activeBest.terminalTotal)}</div>
+                        </div>
+                      </div>
+                      <div className="note">
+                        Large RMDs at 73+ can spike your marginal rate, increasing taxes on Social Security
+                        and triggering IRMAA surcharges. Converting enough before RMDs begin keeps your income
+                        in a lower bracket every year. Ties between strategies with the same peak rate are broken
+                        by lowest lifetime taxes.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="detail-grid">
+                        <div className="detail-item">
+                          <div className="detail-label">Federal tax saved</div>
+                          <div className="detail-value">{fmt(optimization.baseline.lifetimeFederalTax - activeBest.lifetimeFederalTax)}</div>
+                        </div>
+                        <div className="detail-item">
+                          <div className="detail-label">IRMAA saved</div>
+                          <div className="detail-value">{fmt(optimization.baseline.lifetimeIRMAA - activeBest.lifetimeIRMAA)}</div>
+                        </div>
+                        <div className="detail-item">
+                          <div className="detail-label">Peak marginal rate</div>
+                          <div className="detail-value">{pct(optimization.baseline.peakMarginalRate)} → {pct(activeBest.peakMarginalRate)}</div>
+                        </div>
+                        <div className="detail-item">
+                          <div className="detail-label">Roth at death</div>
+                          <div className="detail-value">{fmt(optimization.baseline.terminalRoth)} → {fmt(activeBest.terminalRoth)}</div>
+                        </div>
+                      </div>
+                      <div className="note">
+                        Converting early at lower rates reduces future RMDs, which lowers marginal rates during RMD years,
+                        which reduces SS taxation and IRMAA surcharges. The optimal strategy fills brackets when current
+                        rates are lower than expected future rates.
+                      </div>
+                    </>
+                  )}
                 </div>
-              )}
-            </>
-          ) : (
+              </>
+            );
+          })() : (
             <div className="note">Optimizer is computing...</div>
           )}
         </div>

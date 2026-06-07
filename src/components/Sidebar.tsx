@@ -6,9 +6,11 @@ import TipLabel from './TipLabel';
 interface SidebarProps {
   inputs: InputParams;
   onInputChange: (field: keyof InputParams, value: string | number | boolean) => void;
+  conversionSchedule: Record<number, number> | null;
+  onClearSchedule: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange }) => {
+const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSchedule, onClearSchedule }) => {
   const handleRangeChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
     onInputChange(field, Number((e.target as HTMLInputElement).value));
   };
@@ -310,6 +312,15 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange }) => {
           </div>
         </div>
         <div className="field">
+          <TipLabel text="Taxable cost basis ($)" />
+          <input type="number" value={inputs.taxableBasis ?? ''} step={5000}
+            placeholder={`${inputs.taxableBal} (no gains)`}
+            onInput={(e) => {
+              const v = Number((e.target as HTMLInputElement).value);
+              onInputChange('taxableBasis', v || undefined as any);
+            }} />
+        </div>
+        <div className="field">
           <TipLabel text="Monthly contributions" />
           <div className="two-col">
             <input type="number" value={inputs.tradContrib} step={100}
@@ -516,28 +527,47 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange }) => {
       {/* Roth conversions */}
       <div>
         <div className="section-label">Roth conversions</div>
-        <div className="field">
-          <TipLabel text="Max annual conversion ($)" />
-          <input type="number" value={inputs.rothConv} step={1000}
-            onInput={(e) => handleNumberChange('rothConv', e)} />
-        </div>
-        <div className="field">
-          <TipLabel text="Convert until age" />
-          <div className="range-row">
-            <input type="range" min={60} max={80} value={inputs.convUntil} step={1}
-              onInput={(e) => handleRangeChange('convUntil', e)} />
-            <span className="range-val">{inputs.convUntil}</span>
+        {conversionSchedule ? (
+          <div style={{ background: '#EAF4FB', border: '1px solid #AED6F1', borderRadius: '5px', padding: '8px 10px', fontSize: '11px', color: '#1A5276' }}>
+            <div style={{ fontWeight: 600, marginBottom: '4px' }}>
+              Optimizer schedule active
+            </div>
+            <div style={{ color: '#555', marginBottom: '6px' }}>
+              {Object.keys(conversionSchedule).length} year schedule (ages {Math.min(...Object.keys(conversionSchedule).map(Number))}–{Math.max(...Object.keys(conversionSchedule).map(Number))}). Sidebar settings below are overridden.
+            </div>
+            <button
+              onClick={onClearSchedule}
+              style={{ fontSize: '11px', padding: '2px 8px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
+            >
+              Reset to sidebar settings
+            </button>
           </div>
-        </div>
-        <div className="field">
-          <TipLabel text="Target conversion bracket" />
-          <select value={inputs.targetConvBracket} onChange={handleBracketChange}>
-            <option value={0}>10% bracket</option>
-            <option value={1}>12% bracket</option>
-            <option value={2}>22% bracket</option>
-            <option value={3}>24% bracket</option>
-          </select>
-        </div>
+        ) : (
+          <>
+            <div className="field">
+              <TipLabel text="Max annual conversion ($)" />
+              <input type="number" value={inputs.rothConv} step={1000}
+                onInput={(e) => handleNumberChange('rothConv', e)} />
+            </div>
+            <div className="field">
+              <TipLabel text="Convert until age" />
+              <div className="range-row">
+                <input type="range" min={60} max={80} value={inputs.convUntil} step={1}
+                  onInput={(e) => handleRangeChange('convUntil', e)} />
+                <span className="range-val">{inputs.convUntil}</span>
+              </div>
+            </div>
+            <div className="field">
+              <TipLabel text="Target conversion bracket" />
+              <select value={inputs.targetConvBracket} onChange={handleBracketChange}>
+                <option value={0}>10% bracket</option>
+                <option value={1}>12% bracket</option>
+                <option value={2}>22% bracket</option>
+                <option value={3}>24% bracket</option>
+              </select>
+            </div>
+          </>
+        )}
       </div>
 
       <hr className="divider" />

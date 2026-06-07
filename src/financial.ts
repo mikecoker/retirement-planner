@@ -30,6 +30,12 @@ const TAX_BRACKETS: Record<'single' | 'married', [number, number][]> = {
 
 // Standard deductions 2025
 const STD_DEDUCTION = { single: 15000, married: 30000 };
+
+// 2025 LTCG thresholds (where 0% rate ends and 15% begins, 15% ends and 20% begins)
+const LTCG_THRESHOLDS: Record<'single' | 'married', [number, number]> = {
+  single: [48350, 518900],
+  married: [96700, 583750],
+};
 // Additional standard deduction for 65+ — per eligible person (both spouses count separately)
 const ADDITIONAL_STD_65 = { single: 2000, married: 1600 };
 
@@ -76,6 +82,18 @@ export function bracketHeadroom(
   return Math.max(0, maxTaxableInBracket - currentTaxable);
 }
 
+// Returns how much ordinary income can be added before any federal income tax is owed.
+// Income below the standard deduction is at 0% effective rate — always free to convert.
+export function stdDeductionHeadroom(
+  currentOrdinaryIncome: number,
+  status: 'single' | 'married',
+  num65: number = 0,
+  inflFactor: number = 1,
+): number {
+  const std = (STD_DEDUCTION[status] + num65 * ADDITIONAL_STD_65[status]) * inflFactor;
+  return Math.max(0, std - currentOrdinaryIncome);
+}
+
 export function estimateTax(
   income: number,
   status: 'single' | 'married',
@@ -94,6 +112,23 @@ export function estimateTax(
     prev = adjCap;
   }
   return Math.round(tax);
+}
+
+function estimateLtcgTax(
+  ltcg: number,
+  ordinaryTaxableIncome: number,  // already net of standard deduction
+  status: 'single' | 'married',
+  inflFactor: number = 1,
+): number {
+  if (ltcg <= 0) return 0;
+  const [zero, fifteen] = LTCG_THRESHOLDS[status].map(t => Math.round(t * inflFactor));
+  // LTCG stacks on top of ordinary taxable income
+  const inZero = Math.max(0, Math.min(ltcg, zero - ordinaryTaxableIncome));
+  const above0 = ltcg - inZero;
+  const start15 = Math.max(0, ordinaryTaxableIncome - zero);
+  const inFifteen = Math.max(0, Math.min(above0, fifteen - zero - start15));
+  const inTwenty = Math.max(0, ltcg - inZero - inFifteen);
+  return Math.round(inFifteen * 0.15 + inTwenty * 0.20);
 }
 
 export function marginalRate(
@@ -249,6 +284,7 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
   let roth = params.rothBal;
   let taxable = params.taxableBal;
   let hsa = params.hsaBal;
+  let basis = params.taxableBasis ?? params.taxableBal; // full basis = no embedded gains by default
 
   const retireIn = Math.max(1, params.retireAge - params.age);
   const totalYears = Math.max(
@@ -273,6 +309,7 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
     let ssTaxable = 0, federalTax = 0, stateTax = 0;
     let irmaaPartB = 0, irmaaPartD = 0;
     let convTaxCalc = 0;
+    let ltcgAmount = 0;
 
     if (y === 0) {
       rows.push({
@@ -315,6 +352,7 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
       trad += params.tradContrib * 12 + (y > 0 ? Math.round(employerMatch) : 0);
       roth += params.rothContrib * 12;
       taxable += params.taxableContrib * 12;
+      basis += params.taxableContrib * 12; // contributions go in at par
       hsa += params.hsaContrib * 12;
 
       magi2YearsAgo = magi1YearAgo;
@@ -385,9 +423,7 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
         irmaaPartD = irmaa.partD;
       }
 
-      // Update MAGI tracking
-      magi2YearsAgo = magi1YearAgo;
-      magi1YearAgo = totalOrdinary;
+      // MAGI tracking updated later after LTCG is known
 
       // Step 3: Determine spending need after SS and taxes
       const totalSS = ssInc + spouseSsInc;
@@ -424,19 +460,52 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
         remaining -= rothW;
       }
 
+      // LTCG: compute realized gain from taxable withdrawal
+      const gainRatio = taxable > 0 ? Math.max(0, Math.min(1, (taxable - basis) / taxable)) : 0;
+      ltcgAmount = Math.round(taxableW * gainRatio);
+
+      // If there are realized gains, re-run SS taxability and ordinary tax including LTCG in provisional income
+      let ltcgTax = 0;
+      if (ltcgAmount > 0) {
+        // LTCG is included in provisional income for SS taxability
+        ssTaxable = taxableSSPortion(ssInc + spouseSsInc, rmd + conv + ltcgAmount, params.filingStatus);
+        const totalOrdinaryWithLtcg = rmd + conv + ssTaxable;
+        federalTax = estimateTax(totalOrdinaryWithLtcg, params.filingStatus, num65, inflFactor);
+        if (params.includeStateTax && params.stateTaxRate > 0) {
+          stateTax = Math.round(totalOrdinaryWithLtcg * params.stateTaxRate);
+        }
+        const stdDed = (STD_DEDUCTION[params.filingStatus] + num65 * ADDITIONAL_STD_65[params.filingStatus]) * inflFactor;
+        const ordinaryTaxableIncome = Math.max(0, totalOrdinaryWithLtcg - stdDed);
+        ltcgTax = estimateLtcgTax(ltcgAmount, ordinaryTaxableIncome, params.filingStatus, inflFactor);
+      }
+
+      // Update MAGI tracking (include LTCG in MAGI for next year's IRMAA)
+      magi2YearsAgo = magi1YearAgo;
+      magi1YearAgo = rmd + conv + ssTaxable + ltcgAmount;
+
       // Update balances
       trad = Math.max(0, trad - rmd - conv - tradW);
       roth = Math.max(0, roth + conv - rothW);
-      taxable = Math.max(0, taxable - taxableW);
+      // Update basis proportionally to fraction of account sold
+      if (taxable > 0) basis = Math.round(basis * Math.max(0, taxable - taxableW) / taxable);
+      taxable = Math.max(0, taxable - taxableW - ltcgTax); // LTCG tax paid from taxable account
       hsa = Math.max(0, hsa - hsaW);
     }
 
     const portfolioValue = trad + roth + taxable + hsa;
     const ordinaryForTax = rmd + conv + ssTaxable;
     const mRate = marginalRate(ordinaryForTax, params.filingStatus, num65, inflFactor);
-    const grossIncome = rmd + conv + ssInc + spouseSsInc;
+    const grossIncome = rmd + conv + ssInc + spouseSsInc + ltcgAmount;
+    const ltcgTaxFinal = (age >= params.retireAge) ? (() => {
+      // Re-derive ltcgTax for eRate calculation — already computed in distribution block
+      // We need it in scope; use the value already captured in the closure via ltcgAmount
+      if (ltcgAmount <= 0) return 0;
+      const stdDed = (STD_DEDUCTION[params.filingStatus] + num65 * ADDITIONAL_STD_65[params.filingStatus]) * inflFactor;
+      const ordTaxable = Math.max(0, ordinaryForTax - stdDed);
+      return estimateLtcgTax(ltcgAmount, ordTaxable, params.filingStatus, inflFactor);
+    })() : 0;
     const eRate = grossIncome > 0 && age >= params.retireAge
-      ? ((federalTax + stateTax) / grossIncome)
+      ? ((federalTax + stateTax + ltcgTaxFinal) / grossIncome)
       : 0;
 
     rows.push({
@@ -455,15 +524,15 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
       ss: Math.round(ssInc),
       spouseSs: Math.round(spouseSsInc),
       pension: 0,
-      ordinaryIncome: Math.round(ordinaryForTax),
+      ordinaryIncome: Math.round(rmd + conv + ssTaxable),
       qualifiedDividends: 0,
-      ltcg: 0,
+      ltcg: Math.round(ltcgAmount),
       ssTaxable: Math.round(ssTaxable),
       standardDeduction: Math.round((STD_DEDUCTION[params.filingStatus] + num65 * ADDITIONAL_STD_65[params.filingStatus]) * inflFactor),
-      taxableIncome: Math.round(Math.max(0, ordinaryForTax - (STD_DEDUCTION[params.filingStatus] + num65 * ADDITIONAL_STD_65[params.filingStatus]) * inflFactor)),
+      taxableIncome: Math.round(Math.max(0, rmd + conv + ssTaxable - (STD_DEDUCTION[params.filingStatus] + num65 * ADDITIONAL_STD_65[params.filingStatus]) * inflFactor)),
       federalTax,
       stateTax,
-      totalTax: federalTax + stateTax + irmaaPartB + irmaaPartD,
+      totalTax: federalTax + stateTax + irmaaPartB + irmaaPartD + ltcgTaxFinal,
       convTax: convTaxCalc,
       marginalRate: mRate,
       effectiveRate: eRate,

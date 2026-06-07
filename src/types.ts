@@ -18,6 +18,7 @@ export interface InputParams {
   tradBal: number;
   rothBal: number;
   taxableBal: number;
+  taxableBasis?: number;
   hsaBal: number;
   tradContrib: number;
   rothContrib: number;

@@ -28,6 +28,7 @@ const DEFAULTS: InputParams = {
   tradBal: 400000,
   rothBal: 100000,
   taxableBal: 50000,
+  taxableBasis: undefined,
   hsaBal: 20000,
   tradContrib: 1500,
   rothContrib: 500,
@@ -172,6 +173,7 @@ const App: React.FC = () => {
     return loadFromStorage();
   });
   const [activeTab, setActiveTab] = useState<'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer'>('balance');
+  const [conversionSchedule, setConversionSchedule] = useState<Record<number, number> | null>(null);
   const [rows, setRows] = useState<ProjectionRow[]>([]);
   const [metrics, setMetrics] = useState<{ m1: string; m2: string; m3: string }>({
     m1: '—',
@@ -187,7 +189,7 @@ const App: React.FC = () => {
   // Run projection whenever inputs change
   useEffect(() => {
     const r = inputs.r;
-    const projectionRows = runProjection(inputs, r);
+    const projectionRows = runProjection(inputs, r, conversionSchedule ?? undefined);
     setRows(projectionRows);
 
     const retireIn = Math.max(1, inputs.retireAge - inputs.age);
@@ -204,7 +206,7 @@ const App: React.FC = () => {
     const m3 = peakRmd > 0 ? `${fmt(peakRmd)}/yr` : 'None';
 
     setMetrics({ m1, m2, m3 });
-  }, [inputs]);
+  }, [inputs, conversionSchedule]);
 
   // Run optimizer (memoized, only recompute when inputs change)
   const optimization: OptimizationOutput | null = useMemo(() => {
@@ -277,7 +279,12 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      <Sidebar inputs={inputs} onInputChange={handleInputChange} />
+      <Sidebar
+        inputs={inputs}
+        onInputChange={handleInputChange}
+        conversionSchedule={conversionSchedule}
+        onClearSchedule={() => setConversionSchedule(null)}
+      />
       <Main
         inputs={inputs}
         activeTab={activeTab}
@@ -286,6 +293,9 @@ const App: React.FC = () => {
         metrics={metrics}
         optimization={optimization}
         optTimestamp={optTimestamp}
+        conversionSchedule={conversionSchedule}
+        onApplySchedule={setConversionSchedule}
+        onClearSchedule={() => setConversionSchedule(null)}
       />
     </div>
   );

@@ -1,5 +1,5 @@
 import type { InputParams, ProjectionRow } from './types';
-import { runProjection, bracketHeadroom, taxableSSPortion, ssAt, spouseSsAt, taxInflFactor, countEligible65 } from './financial';
+import { runProjection, bracketHeadroom, stdDeductionHeadroom, taxableSSPortion, ssAt, spouseSsAt, taxInflFactor, countEligible65 } from './financial';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -22,16 +22,21 @@ export interface StrategyResult {
   lifetimeStateTax: number;
   lifetimeIRMAA: number;
   lifetimeTotalTax: number;
+  lifetimeTaxNPV: number;  // taxes discounted to today at nominal return rate
   terminalTrad: number;
   terminalRoth: number;
   terminalTotal: number;
   peakMarginalRate: number;
   avgMarginalRate: number;
+  marginalRateRange: number; // max − min across retirement years (smoothness metric)
 }
 
 export interface OptimizationOutput {
   strategies: StrategyResult[];
-  best: StrategyResult;            // best from independent strategies (never "Your current settings")
+  best: StrategyResult;            // best by lifetime tax (backward compat alias for bestByTax)
+  bestByTax: StrategyResult;       // minimize lifetime taxes
+  bestByPortfolio: StrategyResult; // maximize terminal portfolio value
+  bestByPeakRate: StrategyResult;  // minimize peak marginal rate (smoothest brackets)
   baseline: StrategyResult;        // no-conversion baseline
   currentSettings: StrategyResult; // what the sidebar is currently set to (reference only)
   savingsVsBaseline: number;
@@ -210,6 +215,92 @@ function buildGreedySchedule(
   return schedule;
 }
 
+// ── Income smoother ───────────────────────────────────────────────────────
+//
+// Sweeps over candidate fixed annual conversion amounts and picks the one that
+// minimizes lifetime taxes. This approach naturally handles the SS taxation
+// interaction (more income → more SS taxable → possible bracket overflow) without
+// needing to solve a feedback loop. The target bracket from the no-conv baseline
+// caps the upper bound of the sweep range.
+
+function buildFixedAnnualSchedule(
+  params: InputParams,
+  annualAmount: number,
+  noConvBaseline: ProjectionRow[],
+): Record<number, number> {
+  const schedule: Record<number, number> = {};
+  const retireRow = noConvBaseline.find(r => r.age === params.retireAge);
+  let remainingTrad = retireRow?.trad ?? params.tradBal;
+
+  for (let age = params.retireAge; age <= 72; age++) {
+    const row = noConvBaseline.find(r => r.age === age);
+    if (!row || remainingTrad <= 0) continue;
+    remainingTrad *= (1 + params.r);
+    const rmd = row.rmd;
+    const amount = Math.min(annualAmount, Math.max(0, remainingTrad - rmd));
+    if (amount > 100) {
+      schedule[age] = Math.floor(amount);
+      remainingTrad -= amount + rmd;
+    } else {
+      remainingTrad -= rmd;
+    }
+  }
+
+  return schedule;
+}
+
+function buildSmootherSchedule(
+  params: InputParams,
+  noConvBaseline: ProjectionRow[],
+): Record<number, number> {
+  const rmdRows = noConvBaseline.filter(r => r.age >= 73 && r.rmd > 0);
+  if (rmdRows.length === 0) return {};
+
+  // RMD-weighted average marginal rate during RMD years (no conversions)
+  const totalRmd = rmdRows.reduce((s, r) => s + r.rmd, 0);
+  const weightedRate = rmdRows.reduce((s, r) => s + r.marginalRate * r.rmd, 0) / totalRmd;
+
+  // Target bracket determines the upper bound of the annual sweep
+  let targetBracket: 0 | 1 | 2 | 3;
+  if (weightedRate <= 0.10) targetBracket = 0;
+  else if (weightedRate <= 0.12) targetBracket = 1;
+  else if (weightedRate <= 0.22) targetBracket = 2;
+  else targetBracket = 3;
+
+  // Upper bound: for bracket 0 (10% ceiling < std deduction), cap at the standard deduction
+  // (free-conversion zone). For higher brackets, cap at the full bracket headroom.
+  const retireInflFactor = taxInflFactor(params, params.retireAge);
+  const retireNum65 = countEligible65(params, params.retireAge);
+  const maxAmount = targetBracket === 0
+    ? stdDeductionHeadroom(0, params.filingStatus, retireNum65, retireInflFactor)
+    : bracketHeadroom(0, params.filingStatus, targetBracket, retireNum65, retireInflFactor);
+
+  if (maxAmount <= 0) return {};
+
+  // Sweep 10 candidate amounts and pick the one with minimum lifetime tax
+  const N_STEPS = 10;
+  let bestTax = Infinity;
+  let bestSchedule: Record<number, number> = {};
+
+  for (let i = 1; i <= N_STEPS; i++) {
+    const annual = Math.round((i / N_STEPS) * maxAmount);
+    const sched = buildFixedAnnualSchedule(params, annual, noConvBaseline);
+    const result = evaluateSchedule(params, sched, {
+      name: 'Income smoother (sweep)',
+      description: '',
+      targetBracket,
+      maxAnnual: annual,
+      untilAge: 72,
+    });
+    if (result.lifetimeTotalTax < bestTax) {
+      bestTax = result.lifetimeTotalTax;
+      bestSchedule = sched;
+    }
+  }
+
+  return bestSchedule;
+}
+
 // ── Evaluate a schedule ────────────────────────────────────────────────────
 
 function evaluateSchedule(
@@ -228,13 +319,16 @@ function evaluateSchedule(
   const lifetimeStateTax = retireRows.reduce((s, r) => s + r.stateTax, 0);
   const lifetimeIRMAA = retireRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0);
   const lifetimeTotalTax = retireRows.reduce((s, r) => s + r.totalTax, 0);
+  const lifetimeTaxNPV = retireRows.reduce((s, r) => {
+    const yearsOut = Math.max(0, r.age - params.age);
+    return s + r.totalTax / Math.pow(1 + params.r, yearsOut);
+  }, 0);
 
-  const peakMarginalRate = retireRows.length
-    ? Math.max(...retireRows.map(r => r.marginalRate))
-    : 0;
-  const avgMarginalRate = retireRows.length
-    ? retireRows.reduce((s, r) => s + r.marginalRate, 0) / retireRows.length
-    : 0;
+  const rates = retireRows.map(r => r.marginalRate);
+  const peakMarginalRate = rates.length ? Math.max(...rates) : 0;
+  const minMarginalRate = rates.length ? Math.min(...rates) : 0;
+  const avgMarginalRate = rates.length ? rates.reduce((s, r) => s + r, 0) / rates.length : 0;
+  const marginalRateRange = peakMarginalRate - minMarginalRate;
 
   return {
     strategy,
@@ -244,11 +338,13 @@ function evaluateSchedule(
     lifetimeStateTax,
     lifetimeIRMAA,
     lifetimeTotalTax,
+    lifetimeTaxNPV,
     terminalTrad: lastRow?.trad ?? 0,
     terminalRoth: lastRow?.roth ?? 0,
     terminalTotal: lastRow?.total ?? 0,
     peakMarginalRate,
     avgMarginalRate,
+    marginalRateRange,
   };
 }
 
@@ -265,13 +361,16 @@ function evaluateCurrentSettings(params: InputParams): StrategyResult {
   const lifetimeStateTax = retireRows.reduce((s, r) => s + r.stateTax, 0);
   const lifetimeIRMAA = retireRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0);
   const lifetimeTotalTax = retireRows.reduce((s, r) => s + r.totalTax, 0);
+  const lifetimeTaxNPV = retireRows.reduce((s, r) => {
+    const yearsOut = Math.max(0, r.age - params.age);
+    return s + r.totalTax / Math.pow(1 + params.r, yearsOut);
+  }, 0);
 
-  const peakMarginalRate = retireRows.length
-    ? Math.max(...retireRows.map(r => r.marginalRate))
-    : 0;
-  const avgMarginalRate = retireRows.length
-    ? retireRows.reduce((s, r) => s + r.marginalRate, 0) / retireRows.length
-    : 0;
+  const rates = retireRows.map(r => r.marginalRate);
+  const peakMarginalRate = rates.length ? Math.max(...rates) : 0;
+  const minMarginalRate = rates.length ? Math.min(...rates) : 0;
+  const avgMarginalRate = rates.length ? rates.reduce((s, r) => s + r, 0) / rates.length : 0;
+  const marginalRateRange = peakMarginalRate - minMarginalRate;
 
   const schedule = retireRows
     .filter(r => r.conv > 0)
@@ -291,11 +390,13 @@ function evaluateCurrentSettings(params: InputParams): StrategyResult {
     lifetimeStateTax,
     lifetimeIRMAA,
     lifetimeTotalTax,
+    lifetimeTaxNPV,
     terminalTrad: lastRow?.trad ?? 0,
     terminalRoth: lastRow?.roth ?? 0,
     terminalTotal: lastRow?.total ?? 0,
     peakMarginalRate,
     avgMarginalRate,
+    marginalRateRange,
   };
 }
 
@@ -333,14 +434,42 @@ export function runOptimizer(params: InputParams): OptimizationOutput {
     untilAge: 72,
   }));
 
-  // 4. Add "Your current settings" as a reference row (NOT eligible for "best")
+  // 4. Add income smoother — single-pass against the no-conversion baseline.
+  //    The target bracket is fixed from the baseline so it never drifts.
+  const smootherSchedule = buildSmootherSchedule(params, noConvBaseline);
+  results.push(evaluateSchedule(params, smootherSchedule, {
+    name: 'Income smoother',
+    description: 'Converts each year to match projected RMD-year income, equalizing marginal rates across all of retirement.',
+    targetBracket: 2,
+    maxAnnual: 0,
+    untilAge: 72,
+  }));
+
+  // 5. Add "Your current settings" as a reference row (NOT eligible for "best")
   const currentResult = evaluateCurrentSettings(params);
   results.push(currentResult);
 
-  // 5. Find best — exclude "Your current settings" from competition
+  // 6. Find best per goal — exclude "Your current settings" from competition
   const eligible = results.filter(r => r.strategy.name !== 'Your current settings');
-  const sorted = [...eligible].sort((a, b) => a.lifetimeTotalTax - b.lifetimeTotalTax);
-  const best = sorted[0];
+  const bestByTax = [...eligible].sort((a, b) => a.lifetimeTotalTax - b.lifetimeTotalTax)[0];
+  const bestByPortfolio = [...eligible].sort((a, b) => b.terminalTotal - a.terminalTotal)[0];
+
+  // "Smooth brackets" always recommends the Income smoother — it was built for this goal.
+  // Fall back to lowest-peak grid strategy only if smoother somehow raises the peak rate.
+  const smootherResult = eligible.find(r => r.strategy.name === 'Income smoother')!;
+  const gridBestByPeak = [...eligible.filter(r => r.strategy.name !== 'Income smoother')]
+    .sort((a, b) =>
+      a.peakMarginalRate !== b.peakMarginalRate
+        ? a.peakMarginalRate - b.peakMarginalRate
+        : a.marginalRateRange !== b.marginalRateRange
+          ? a.marginalRateRange - b.marginalRateRange
+          : a.lifetimeTotalTax - b.lifetimeTotalTax
+    )[0];
+  const bestByPeakRate = smootherResult &&
+    smootherResult.peakMarginalRate <= gridBestByPeak.peakMarginalRate
+    ? smootherResult
+    : gridBestByPeak;
+  const best = bestByTax; // backward compat
   const baseline = results.find(r => r.strategy.name === 'No conversions')!;
 
   // 6. Derive recommended params from the best schedule
@@ -354,6 +483,9 @@ export function runOptimizer(params: InputParams): OptimizationOutput {
   return {
     strategies: results,
     best,
+    bestByTax,
+    bestByPortfolio,
+    bestByPeakRate,
     baseline,
     currentSettings: currentResult,
     savingsVsBaseline: baseline.lifetimeTotalTax - best.lifetimeTotalTax,
