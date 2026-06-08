@@ -280,11 +280,6 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             })()}
           </>
         )}
-        <div className="field">
-          <TipLabel text="Annual salary / wages" tip="Gross W-2 wages during working years. Used to compute bracket space for Roth conversions and estimate taxes before retirement." />
-          <input type="number" value={inputs.salary ?? ''} step={5000} placeholder="0 (enter gross wages)"
-            onInput={(e) => handleNumberChange('salary', e)} />
-        </div>
       </div>
 
       <hr className="divider" />

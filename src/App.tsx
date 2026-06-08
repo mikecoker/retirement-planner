@@ -11,10 +11,10 @@ const STORAGE_KEY = 'retirement-planner-inputs';
 
 const DEFAULTS: InputParams = {
   // Personal
-  age: 50,
-  retireAge: 62,
-  lifeExp: 90,
-  filingStatus: 'married',
+  age: 30,
+  retireAge: 67,
+  lifeExp: 95,
+  filingStatus: 'single',
   spouseAge: undefined,
   spouseLifeExp: undefined,
   spouseSsType: 'own',
@@ -25,30 +25,30 @@ const DEFAULTS: InputParams = {
   spouseSsAge: 67,
 
   // Accounts
-  tradBal: 400000,
-  rothBal: 100000,
-  taxableBal: 50000,
+  tradBal: 0,
+  rothBal: 0,
+  taxableBal: 0,
   taxableBasis: undefined,
-  hsaBal: 20000,
-  tradContrib: 1500,
-  rothContrib: 500,
-  taxableContrib: 500,
-  hsaContrib: 300,
-  employerMatch: 0.04,
-  matchLimit: 6,
+  hsaBal: 0,
+  tradContrib: 0,
+  rothContrib: 0,
+  taxableContrib: 0,
+  hsaContrib: 0,
+  employerMatch: 0,
+  matchLimit: 0,
 
   // Social Security
-  ss: 2200,
+  ss: 0,
   ssAge: 67,
   ss62: 0,
   ss67: 0,
   ss70: 0,
 
   // Spending
-  expenses: 6000,
-  healthcareExpenses: 800,
+  expenses: 0,
+  healthcareExpenses: 0,
   ltcExpenses: 0,
-  discretionaryExpenses: 1000,
+  discretionaryExpenses: 0,
   expenseInflationRate: 0.03,
   healthcareInflationRate: 0.055,
 
@@ -56,8 +56,8 @@ const DEFAULTS: InputParams = {
   salary: undefined,
 
   // Roth conversions
-  rothConv: 20000,
-  convStart: 62,
+  rothConv: 0,
+  convStart: 67,
   convUntil: 72,
   targetConvBracket: 1, // 12% bracket
 

@@ -34,6 +34,7 @@ const DEFINITIONS: Record<string, string> = {
   'Annual return (%)': 'Expected nominal annual return on traditional and Roth accounts (typically stock-heavy). Historical S&P 500 average is ~10% nominal, ~7% real. Use 6-8% for conservative estimates.',
   'Taxable account return (%)': 'Expected nominal annual return on taxable brokerage accounts. May be lower if holding more bonds or cash. Long-term stock returns average ~10% nominal.',
   'Inflation (%)': 'General inflation rate used to inflate Social Security (via COLA) and expenses. Historical CPI average is ~3%. Use 2.5-3.5% for typical scenarios.',
+  'Annual salary / wages': 'Gross W-2 wages during working years. Used to compute your current tax bracket, headroom for Roth conversions before retirement, and employer match calculations.',
 };
 
 interface TipLabelProps {

@@ -402,6 +402,22 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
 
   return (
     <div className="chart-card">
+      {/* Salary — always visible */}
+      <div className="field" style={{ marginBottom: '1rem' }}>
+        <TipLabel text="Annual salary / wages" />
+        <input
+          type="number"
+          value={inputs.salary ?? ''}
+          step={5000}
+          placeholder="0 (gross annual wages during working years)"
+          style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '3px', width: '100%' }}
+          onInput={(e) => {
+            const v = Number((e.target as HTMLInputElement).value);
+            onInputChange('salary', v || undefined as any);
+          }}
+        />
+      </div>
+
       {/* Assumptions — always visible, independent of sub-tab */}
       <div style={{ display: 'flex', gap: '1.5rem', padding: '10px 14px', background: '#F8F9FA', border: '1px solid #E8E8E8', borderRadius: '6px', marginBottom: '1.2rem' }}>
         {rateSlider('Annual return (%)', 'r', inputs.r, 1, 12, 0.5, 1)}
