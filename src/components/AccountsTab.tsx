@@ -136,8 +136,8 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
               placeholder={`${inputs.taxableBal} (no gains)`}
               style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '3px', width: '100%' }}
               onInput={(e) => {
-                const v = Number((e.target as HTMLInputElement).value);
-                onInputChange('taxableBasis', v || undefined as any);
+                const raw = (e.target as HTMLInputElement).value;
+                onInputChange('taxableBasis', raw === '' ? undefined as any : Number(raw));
               }}
             />
           </div>
@@ -259,7 +259,7 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
                         <span style={{ fontSize: '10px', color: '#888' }}>Cost Basis ($)</span>
                         <input style={inputStyle} type="number" value={acct.costBasis ?? ''} step={1000}
                           placeholder={String(acct.balance)}
-                          onChange={e => update(acct.id, { costBasis: Number(e.target.value) || undefined })} />
+                          onChange={e => update(acct.id, { costBasis: e.target.value === '' ? undefined : Number(e.target.value) })} />
                       </div>
                     ) : acct.type === 'traditional' ? (
                       <div style={{ display: 'flex', gap: '4px' }}>
