@@ -7,7 +7,8 @@ import { exportToSpreadsheet } from './exportSpreadsheet';
 import Sidebar from './components/Sidebar';
 import Main from './components/Main';
 
-const STORAGE_KEY = 'retirement-planner-inputs';
+const PLANS_KEY = 'retirement-planner-plans-v2';
+const LEGACY_KEY = 'retirement-planner-inputs';
 
 const DEFAULTS: InputParams = {
   // Personal
@@ -59,7 +60,7 @@ const DEFAULTS: InputParams = {
   rothConv: 0,
   convStart: 67,
   convUntil: 72,
-  targetConvBracket: 1, // 12% bracket
+  targetConvBracket: 1,
 
   // Returns (nominal)
   r: 0.07,
@@ -82,45 +83,67 @@ const DEFAULTS: InputParams = {
   accounts: undefined,
 };
 
-function loadFromStorage(): InputParams {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      return { ...DEFAULTS, ...parsed };
-    }
-  } catch {
-    // ignore parse errors
-  }
-  return DEFAULTS;
+interface StoredPlan {
+  id: string;
+  name: string;
+  inputs: InputParams;
+  conversionSchedule: Record<number, number> | null;
+  optMinStartAge?: number;
 }
 
-function saveToStorage(inputs: InputParams): void {
+const newPlanId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+function createPlan(name: string, inputs: InputParams = DEFAULTS): StoredPlan {
+  return { id: newPlanId(), name, inputs, conversionSchedule: null };
+}
+
+function loadPlans(): { plans: StoredPlan[]; activePlanId: string } {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(inputs));
+    const stored = localStorage.getItem(PLANS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed.plans) && parsed.plans.length > 0) {
+        const activeExists = parsed.plans.some((p: StoredPlan) => p.id === parsed.activePlanId);
+        return { plans: parsed.plans, activePlanId: activeExists ? parsed.activePlanId : parsed.plans[0].id };
+      }
+    }
+    // Migrate from legacy single-plan storage
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    const plan = legacy
+      ? createPlan('My Plan', { ...DEFAULTS, ...JSON.parse(legacy) })
+      : createPlan('My Plan');
+    return { plans: [plan], activePlanId: plan.id };
+  } catch {
+    const plan = createPlan('My Plan');
+    return { plans: [plan], activePlanId: plan.id };
+  }
+}
+
+function savePlans(plans: StoredPlan[], activePlanId: string): void {
+  try {
+    localStorage.setItem(PLANS_KEY, JSON.stringify({ plans, activePlanId }));
   } catch {
     // ignore quota errors
   }
 }
 
-function exportToFile(inputs: InputParams): void {
-  const data = JSON.stringify(inputs, null, 2);
+function exportPlanToFile(plan: StoredPlan): void {
+  const data = JSON.stringify(plan.inputs, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'retirement-plan.json';
+  a.download = `${plan.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-function importFromFile(file: File): Promise<InputParams> {
+function importPlanFromFile(file: File): Promise<InputParams> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const parsed = JSON.parse(e.target?.result as string);
-        resolve({ ...DEFAULTS, ...parsed });
+        resolve({ ...DEFAULTS, ...JSON.parse(e.target?.result as string) });
       } catch {
         reject(new Error('Invalid JSON file'));
       }
@@ -130,85 +153,42 @@ function importFromFile(file: File): Promise<InputParams> {
   });
 }
 
-function shareViaURL(inputs: InputParams): void {
-  const params = new URLSearchParams();
-  Object.entries(inputs).forEach(([key, value]) => {
-    if (value !== undefined) {
-      params.set(key, String(value));
-    }
-  });
-  const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
-  navigator.clipboard.writeText(url).then(() => {
-    alert('Shareable link copied to clipboard!');
-  }).catch(() => {
-    prompt('Copy this link:', url);
-  });
-}
-
-function loadFromURL(): InputParams | null {
-  const params = new URLSearchParams(window.location.search);
-  if (params.size === 0) return null;
-  const inputs: Partial<Record<keyof InputParams, string>> = {};
-  params.forEach((value, key) => {
-    inputs[key as keyof InputParams] = value;
-  });
-  const parsed: Partial<InputParams> = {};
-  (Object.keys(inputs) as Array<keyof InputParams>).forEach(k => {
-    const value = inputs[k];
-    if (value !== undefined) {
-      if (k === 'filingStatus') {
-        parsed[k] = value as 'single' | 'married';
-      } else if (k === 'spouseSsType') {
-        parsed[k] = value as 'own' | 'spousal' | 'combined';
-      } else if (k === 'targetConvBracket') {
-        parsed[k] = parseInt(value) as 0 | 1 | 2 | 3;
-      } else if (k === 'includeIRMAA' || k === 'includeStateTax') {
-        parsed[k] = value === 'true';
-      } else {
-        const num = parseFloat(value);
-        if (!isNaN(num)) (parsed as any)[k] = num;
-      }
-    }
-  });
-  return { ...DEFAULTS, ...parsed };
-}
+const btnStyle: React.CSSProperties = { padding: '4px 10px', fontSize: '11px' };
+const dangerStyle: React.CSSProperties = { ...btnStyle, color: '#C0392B', borderColor: 'rgba(192,57,43,0.4)' };
 
 const App: React.FC = () => {
-  const [inputs, setInputs] = useState<InputParams>(() => {
-    const fromURL = loadFromURL();
-    if (fromURL) return fromURL;
-    return loadFromStorage();
-  });
-  const [activeTab, setActiveTab] = useState<'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer' | 'expenses' | 'accounts'>('balance');
-  const [conversionSchedule, setConversionSchedule] = useState<Record<number, number> | null>(null);
+  const [plans, setPlans] = useState<StoredPlan[]>(() => loadPlans().plans);
+  const [activePlanId, setActivePlanId] = useState<string>(() => loadPlans().activePlanId);
+  const [activeTab, setActiveTab] = useState<'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer' | 'expenses' | 'accounts'>('accounts');
   const [rows, setRows] = useState<ProjectionRow[]>([]);
   const [metrics, setMetrics] = useState<{ m1: string; m2: string; m3: string; m4: string; m5: string }>({
-    m1: '—',
-    m2: '—',
-    m3: '—',
-    m4: '—',
-    m5: '—',
+    m1: '—', m2: '—', m3: '—', m4: '—', m5: '—',
   });
 
-  // Save to localStorage whenever inputs change
-  useEffect(() => {
-    saveToStorage(inputs);
-  }, [inputs]);
+  // Derived from active plan
+  const activePlan = plans.find(p => p.id === activePlanId) ?? plans[0];
+  const inputs = activePlan.inputs;
+  const conversionSchedule = activePlan.conversionSchedule;
+  const optMinStartAge = activePlan.optMinStartAge ?? inputs.age;
 
-  // Run projection whenever inputs change
+  // Persist whenever plans or active ID change
   useEffect(() => {
-    const r = inputs.r;
-    const projectionRows = runProjection(inputs, r, conversionSchedule ?? undefined);
+    savePlans(plans, activePlanId);
+  }, [plans, activePlanId]);
+
+  // Run projection whenever inputs or schedule change
+  useEffect(() => {
+    const projectionRows = runProjection(inputs, inputs.r, conversionSchedule ?? undefined);
     setRows(projectionRows);
 
     const retireIn = Math.max(1, inputs.retireAge - inputs.age);
     const retireRow = projectionRows[retireIn] || projectionRows[projectionRows.length - 1];
     const m1 = fmt(retireRow.total);
 
-    const allProjectionRows = projectionRows.slice(1); // all years from current age, matching Tax Analysis tab
+    const allProjectionRows = projectionRows.slice(1);
     const lifetimeTax = Math.round(allProjectionRows.reduce((s, r) => s + r.totalTax, 0));
     const m2 = fmt(lifetimeTax);
-    const retireRows = projectionRows.slice(retireIn); // retirement rows only (for MC sim)
+    const retireRows = projectionRows.slice(retireIn);
 
     const peakRmd = projectionRows.reduce((mx, r) => (r.rmd > mx ? r.rmd : mx), 0);
     const m3 = peakRmd > 0 ? `${fmt(peakRmd)}/yr` : 'None';
@@ -216,7 +196,6 @@ const App: React.FC = () => {
     const lastRow = projectionRows[projectionRows.length - 1];
     const m4 = lastRow ? fmt(lastRow.total) : '—';
 
-    // Monte Carlo success rate — 1000 sims, tracks whether balance stays positive to life expectancy
     const MC_N = 1000;
     const startBal = retireRow.total;
     let mcSuccesses = 0;
@@ -237,9 +216,6 @@ const App: React.FC = () => {
     setMetrics({ m1, m2, m3, m4, m5 });
   }, [inputs, conversionSchedule]);
 
-  const [optMinStartAge, setOptMinStartAge] = useState(() => inputs.age);
-
-  // Run optimizer (memoized, only recompute when inputs or min start age change)
   const optimization: OptimizationOutput | null = useMemo(() => {
     try {
       return runOptimizer(inputs, optMinStartAge);
@@ -248,45 +224,89 @@ const App: React.FC = () => {
     }
   }, [inputs, optMinStartAge]);
 
-  // Timestamp so Optimizer tab can show it re-ran
   const [optTimestamp, setOptTimestamp] = useState(Date.now());
   useEffect(() => {
     if (optimization) setOptTimestamp(Date.now());
   }, [optimization]);
 
+  // ---- Plan mutations ----
+
+  const updateActivePlan = (patch: Partial<StoredPlan>) =>
+    setPlans(prev => prev.map(p => p.id === activePlanId ? { ...p, ...patch } : p));
+
+  const setConversionSchedule = (schedule: Record<number, number> | null) =>
+    updateActivePlan({ conversionSchedule: schedule });
+
+  const setOptMinStartAge = (age: number) =>
+    updateActivePlan({ optMinStartAge: age });
+
   const handleInputChange = (field: keyof InputParams, value: string | number | boolean) => {
-    setInputs(prev => {
-      const next = { ...prev, [field]: value };
-      // Auto-calculate primary ss from estimates
+    setPlans(prev => prev.map(p => {
+      if (p.id !== activePlanId) return p;
+      const next = { ...p.inputs, [field]: value };
       const { ss62, ss67, ss70 } = next;
       if (ss62 && ss67 && ss70 && (field === 'ssAge' || field === 'ss62' || field === 'ss67' || field === 'ss70')) {
         next.ss = ssInterpolate(ss62, ss67, ss70, next.ssAge);
       }
-      // Auto-calculate spouse ss from estimates (own record)
       const { spouseSs62, spouseSs67, spouseSs70 } = next;
       if (spouseSs62 && spouseSs67 && spouseSs70 &&
           (field === 'spouseSsAge' || field === 'spouseSs62' || field === 'spouseSs67' || field === 'spouseSs70')) {
         next.spouseSs = ssInterpolate(spouseSs62, spouseSs67, spouseSs70, next.spouseSsAge ?? 67);
       }
-      return next;
-    });
+      return { ...p, inputs: next };
+    }));
   };
 
-  const handleExpenseItemsChange = (items: import('./types').ExpenseItem[]) => {
-    setInputs(prev => ({ ...prev, expenseItems: items.length > 0 ? items : undefined }));
+  const handleExpenseItemsChange = (items: import('./types').ExpenseItem[]) =>
+    updateActivePlan({ inputs: { ...inputs, expenseItems: items.length > 0 ? items : undefined } });
+
+  const handleAccountsChange = (accounts: Account[]) =>
+    updateActivePlan({ inputs: { ...inputs, accounts: accounts.length > 0 ? accounts : undefined } });
+
+  // ---- Plan management ----
+
+  const addPlan = () => {
+    const plan = createPlan(`Plan ${plans.length + 1}`);
+    setPlans(prev => [...prev, plan]);
+    setActivePlanId(plan.id);
+    setActiveTab('accounts');
   };
 
-  const handleAccountsChange = (accounts: Account[]) => {
-    setInputs(prev => ({ ...prev, accounts: accounts.length > 0 ? accounts : undefined }));
+  const duplicatePlan = () => {
+    const plan: StoredPlan = { ...activePlan, id: newPlanId(), name: `${activePlan.name} (copy)` };
+    setPlans(prev => [...prev, plan]);
+    setActivePlanId(plan.id);
   };
 
-  const handleExport = () => exportToFile(inputs);
+  const renamePlan = () => {
+    const name = window.prompt('Rename plan:', activePlan.name);
+    if (name?.trim()) updateActivePlan({ name: name.trim() });
+  };
+
+  const resetPlan = () => {
+    if (!window.confirm(`Reset "${activePlan.name}" to blank defaults? All data in this plan will be lost.`)) return;
+    updateActivePlan({ inputs: DEFAULTS, conversionSchedule: null, optMinStartAge: undefined });
+  };
+
+  const deletePlan = () => {
+    if (plans.length <= 1) return;
+    if (!window.confirm(`Delete "${activePlan.name}"? This cannot be undone.`)) return;
+    const remaining = plans.filter(p => p.id !== activePlanId);
+    setPlans(remaining);
+    setActivePlanId(remaining[remaining.length - 1].id);
+  };
+
+  // ---- File I/O ----
+
+  const handleExport = () => exportPlanToFile(activePlan);
   const handleExportSpreadsheet = () => exportToSpreadsheet(inputs, rows);
-  const handleShare = () => shareViaURL(inputs);
   const handleImport = async (file: File) => {
     try {
-      const imported = await importFromFile(file);
-      setInputs(imported);
+      const imported = await importPlanFromFile(file);
+      const name = file.name.replace(/\.json$/i, '').replace(/[-_]/g, ' ');
+      const plan = createPlan(name || 'Imported Plan', imported);
+      setPlans(prev => [...prev, plan]);
+      setActivePlanId(plan.id);
     } catch {
       alert('Failed to import. Please select a valid JSON file.');
     }
@@ -295,24 +315,53 @@ const App: React.FC = () => {
   return (
     <div className="app">
       <div className="header">
-        <h1>Retirement Planner</h1>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <button className="tab" onClick={handleExport} style={{ padding: '4px 10px', fontSize: '11px' }}>
+        {/* Plan controls — left */}
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <select
+            value={activePlanId}
+            onChange={e => setActivePlanId(e.target.value)}
+            style={{ fontSize: '12px', padding: '4px 8px', border: '1px solid rgba(0,0,0,0.18)', borderRadius: '5px', background: '#fff', cursor: 'pointer', maxWidth: '180px' }}
+          >
+            {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+
+          <button className="tab" onClick={renamePlan} style={btnStyle} title="Rename this plan">
+            Rename
+          </button>
+          <button className="tab" onClick={addPlan} style={btnStyle}>
+            + New Plan
+          </button>
+          <button className="tab" onClick={duplicatePlan} style={btnStyle} title="Duplicate this plan">
+            Duplicate
+          </button>
+
+          <div style={{ width: '2px', height: '16px', background: 'rgba(0,0,0,0.25)', borderRadius: '1px', margin: '0 2px' }} />
+
+          <button className="tab" onClick={resetPlan} style={dangerStyle} title="Reset to blank defaults">
+            Reset
+          </button>
+          <button className="tab" onClick={deletePlan} disabled={plans.length <= 1}
+            style={{ ...dangerStyle, opacity: plans.length <= 1 ? 0.35 : 1 }}
+            title={plans.length <= 1 ? 'Cannot delete the only plan' : 'Delete this plan'}>
+            Delete
+          </button>
+        </div>
+
+        {/* File I/O — right */}
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <button className="tab" onClick={handleExport} style={btnStyle}>
             Export JSON
           </button>
-          <button className="tab" onClick={handleExportSpreadsheet} style={{ padding: '4px 10px', fontSize: '11px' }}>
+          <button className="tab" onClick={handleExportSpreadsheet} style={btnStyle}>
             Export Excel
           </button>
-          <button className="tab" onClick={handleShare} style={{ padding: '4px 10px', fontSize: '11px' }}>
-            Share Link
-          </button>
-          <label className="tab" style={{ padding: '4px 10px', fontSize: '11px', cursor: 'pointer' }}>
+          <label className="tab" style={{ ...btnStyle, cursor: 'pointer' }}>
             Import
             <input
               type="file"
               accept=".json"
               style={{ display: 'none' }}
-              onChange={(e) => e.target.files?.[0] && handleImport(e.target.files[0])}
+              onChange={(e) => { if (e.target.files?.[0]) { handleImport(e.target.files[0]); e.target.value = ''; } }}
             />
           </label>
         </div>
