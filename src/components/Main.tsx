@@ -85,6 +85,49 @@ type OptimizerGoal = 'tax' | 'portfolio' | 'peakrate' | 'greedy';
 type MonteCarloPreset = 'base' | 'stress';
 type MonteCarloMethod = 'parametric' | 'historical';
 
+const CollapsibleTableSection: React.FC<{
+  id: string;
+  title: string;
+  meta?: string;
+  children: React.ReactNode;
+}> = ({ id, title, meta, children }) => {
+  const storageKey = `vault.table.${id}.open`;
+  const [isOpen, setIsOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(storageKey) === 'true';
+  });
+  const toggleOpen = () => {
+    setIsOpen(open => {
+      const next = !open;
+      window.localStorage.setItem(storageKey, String(next));
+      return next;
+    });
+  };
+
+  return (
+    <section className={`collapsible-table${isOpen ? ' open' : ''}`}>
+      <button
+        type="button"
+        className="collapsible-table-header"
+        onClick={toggleOpen}
+        aria-expanded={isOpen}
+      >
+        <span className="collapsible-table-left">
+          <span className="collapsible-table-chevron" aria-hidden="true" />
+          <span className="collapsible-table-title">{title}</span>
+          {meta && <span className="collapsible-table-meta">{meta}</span>}
+        </span>
+        <span className="collapsible-table-action">{isOpen ? 'Hide' : 'Show'}</span>
+      </button>
+      {isOpen && (
+        <div className="optimizer-table-wrap collapsible-table-body">
+          {children}
+        </div>
+      )}
+    </section>
+  );
+};
+
 const Main: React.FC<MainProps> = ({
   inputs,
   activeTab,
@@ -148,6 +191,12 @@ const Main: React.FC<MainProps> = ({
       : inputs.lifeExp,
   );
   const yearsInRetirement = Math.max(0, horizonEndAge - inputs.retireAge);
+  const projectionAgeRange = rows.length > 0
+    ? `age ${rows[0].age}-${rows[rows.length - 1].age}`
+    : undefined;
+  const resultAgeRange = allRows.length > 0
+    ? `age ${allRows[0].age}-${allRows[allRows.length - 1].age}`
+    : projectionAgeRange;
   const primarySsMonthly = inputs.ss;
   const spouseClaimAge = inputs.spouseSsAge ?? 67;
   const spouseClaimPrimaryAge = inputs.spouseAge !== undefined
@@ -194,11 +243,11 @@ const Main: React.FC<MainProps> = ({
     if (r.age <= inputs.lifeExp) return base ?? {};
     return {
       ...(base ?? {}),
-      background: '#F5F5F5',
-      color: '#999',
-      ...(r.age === inputs.lifeExp + 1 ? { borderTop: '2px dashed #ccc' } : {}),
+      ...(r.age === inputs.lifeExp + 1 ? { borderTop: '2px dashed currentColor' } : {}),
     };
   };
+  const survivorRowClassName = (r: ProjectionRow): string | undefined =>
+    r.age > inputs.lifeExp ? 'survivor-row' : undefined;
   const SurvivorTag = ({ age }: { age: number }) =>
     age === inputs.lifeExp + 1 && inputs.spouseAge !== undefined
       ? <span style={{ marginLeft: 5, fontSize: 9, color: '#aaa', fontWeight: 600 }}>SPOUSE</span>
@@ -410,13 +459,31 @@ const Main: React.FC<MainProps> = ({
           const totalConvTax = convRows.reduce((s, r) => s + r.convTax, 0);
           const shortfallRows = convRows.filter(r => r.tradW > 0);
           const hasShortfall = shortfallRows.length > 0;
+          const convAgeRange = convRows.length > 0
+            ? `age ${convRows[0].age}-${convRows[convRows.length - 1].age}`
+            : undefined;
 
           return (
-            <>
-              <div className="detail-section-title">Conversion tax cost</div>
+            <CollapsibleTableSection id="rmd-conversion-tax" title="Conversion tax cost" meta={convAgeRange}>
+              <div className="rmd-tax-cost-summary">
+                <div>
+                  <div className="detail-label">Total converted</div>
+                  <div className="detail-value">{fmt(convRows.reduce((s, r) => s + r.conv, 0))}</div>
+                </div>
+                <div>
+                  <div className="detail-label">Tax on conversions</div>
+                  <div className="detail-value">{fmt(totalConvTax)}</div>
+                </div>
+                <div>
+                  <div className="detail-label">Average conversion rate</div>
+                  <div className="detail-value">
+                    {convRows.reduce((s, r) => s + r.conv, 0) > 0 ? pct(totalConvTax / convRows.reduce((s, r) => s + r.conv, 0)) : '—'}
+                  </div>
+                </div>
+              </div>
 
               {/* Year-by-year conversion tax table */}
-              <div className="optimizer-table-wrap">
+              <div className="optimizer-table-wrap rmd-conversion-tax-table">
                 <table className="optimizer-table opt-schedule-table">
                   <thead>
                     <tr>
@@ -430,7 +497,7 @@ const Main: React.FC<MainProps> = ({
                   </thead>
                   <tbody>
                     {convRows.map(r => (
-                      <tr key={r.age} style={survivorRowStyle(r, r.tradW > 0 ? { background: '#FFF5F5' } : undefined)}>
+                      <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r, r.tradW > 0 ? { background: '#FFF5F5' } : undefined)}>
                         <td>{r.age}<SurvivorTag age={r.age} /></td>
                         <td>{fmt(r.conv)}</td>
                         <td>{fmt(r.convTax)}</td>
@@ -454,18 +521,18 @@ const Main: React.FC<MainProps> = ({
               </div>
 
               {hasShortfall ? (
-                <div className="note" style={{ color: '#922B21', background: '#FDEDEC', borderLeft: '3px solid #E74C3C', paddingLeft: '8px' }}>
+                <div className="note rmd-tax-cost-note warning">
                   <strong>Warning:</strong> In {shortfallRows.length} conversion year{shortfallRows.length > 1 ? 's' : ''} (age{shortfallRows.length > 1 ? 's' : ''} {shortfallRows.map(r => r.age).join(', ')}),
                   the taxable account ran short and additional traditional IRA withdrawals were needed to cover expenses and taxes (highlighted above).
                   Those extra withdrawals are themselves taxable income — the true tax cost in those years is understated.
                   Consider increasing your taxable account balance or reducing conversion amounts.
                 </div>
               ) : (
-                <div className="note" style={{ color: '#1A5276', background: '#EBF5FB', borderLeft: '3px solid #3498DB', paddingLeft: '8px' }}>
+                <div className="note rmd-tax-cost-note info">
                   Conversion taxes are modeled as paid from your taxable account. The taxable account remained solvent throughout the conversion period.
                 </div>
               )}
-            </>
+            </CollapsibleTableSection>
           );
         })()}
       </div>
@@ -638,8 +705,7 @@ const Main: React.FC<MainProps> = ({
             <Line data={balanceData()} options={baseOpts()} />
           </div>
 
-          <div className="detail-section-title" style={{ marginTop: '1.2rem' }}>Year-by-year balances</div>
-          <div className="optimizer-table-wrap">
+          <CollapsibleTableSection id="balances" title="Year-by-year balances" meta={projectionAgeRange}>
             <table className="optimizer-table opt-schedule-table">
               <thead>
                 <tr>
@@ -657,7 +723,7 @@ const Main: React.FC<MainProps> = ({
                   const prev = rows[i - 1];
                   const change = prev ? r.total - prev.total : null;
                   return (
-                    <tr key={r.age} style={survivorRowStyle(r, r.age === inputs.retireAge ? { borderTop: '2px solid #378ADD' } : undefined)}>
+                    <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r, r.age === inputs.retireAge ? { borderTop: '2px solid #378ADD' } : undefined)}>
                       <td>
                         {r.age}
                         {r.age === inputs.retireAge && <span style={{ marginLeft: 6, fontSize: 10, color: '#378ADD', fontWeight: 600 }}>RETIRE</span>}
@@ -676,7 +742,7 @@ const Main: React.FC<MainProps> = ({
                 })}
               </tbody>
             </table>
-          </div>
+          </CollapsibleTableSection>
         </div>
       )}
 
@@ -702,8 +768,7 @@ const Main: React.FC<MainProps> = ({
           </div>
 
           {/* Year-by-year income & spending breakdown */}
-          <div className="detail-section-title" style={{ marginTop: '1.2rem' }}>Annual income & spending detail</div>
-          <div className="optimizer-table-wrap">
+          <CollapsibleTableSection id="income" title="Annual income & spending detail" meta={resultAgeRange}>
             <table className="optimizer-table opt-schedule-table">
               <thead>
                 <tr>
@@ -731,7 +796,7 @@ const Main: React.FC<MainProps> = ({
                   const net = totalIn - r.totalSpending - r.totalTax;
                   const netSpendable = totalIn - r.conv - r.totalSpending - (r.totalTax - r.convTax);
                   return (
-                    <tr key={r.age} style={survivorRowStyle(r, netSpendable < -2000 ? { background: '#FFF5F5' } : undefined)}>
+                    <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r, netSpendable < -2000 ? { background: '#FFF5F5' } : undefined)}>
                       <td>{r.age}<SurvivorTag age={r.age} /></td>
                       <td>{salary > 0 ? fmt(salary) : '—'}</td>
                       <td>{r.ss + r.spouseSs > 0 ? fmt(r.ss + r.spouseSs) : '—'}</td>
@@ -756,7 +821,7 @@ const Main: React.FC<MainProps> = ({
                 })}
               </tbody>
             </table>
-          </div>
+          </CollapsibleTableSection>
           <div className="note">
             <strong>Net Spendable</strong> = Total In − Roth Conversion − Spending − Taxes. This is actual cash flow: conversions are trad→Roth transfers, not money you can spend.
             <strong> Net</strong> includes conversions as income (for tax accounting). A negative Net Spendable means the portfolio couldn't fully cover real expenses that year.
@@ -853,7 +918,7 @@ const Main: React.FC<MainProps> = ({
                       </thead>
                       <tbody>
                         {tableRows.map(r => (
-                          <tr key={r.age} style={survivorRowStyle(r)}>
+                          <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r)}>
                             <td>{r.age}<SurvivorTag age={r.age} /></td>
                             <td>{r.rmd > 0 ? fmt(r.rmd) : '—'}</td>
                             <td>{r.qcd > 0 ? fmt(r.qcd) : '—'}</td>
@@ -1036,8 +1101,7 @@ const Main: React.FC<MainProps> = ({
             </div>
           </div>
 
-          <div className="detail-section-title" style={{ marginTop: '1.2rem' }}>Year-by-year tax detail</div>
-          <div className="optimizer-table-wrap">
+          <CollapsibleTableSection id="tax" title="Year-by-year tax detail" meta={resultAgeRange}>
             <table className="optimizer-table opt-schedule-table">
               <thead>
                 <tr>
@@ -1055,7 +1119,7 @@ const Main: React.FC<MainProps> = ({
               </thead>
               <tbody>
                 {allRows.map(r => (
-                  <tr key={r.age} style={survivorRowStyle(r)}>
+                  <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r)}>
                     <td>{r.age}<SurvivorTag age={r.age} /></td>
                     <td>{fmt(r.ordinaryIncome)}</td>
                     <td>{fmt(r.standardDeduction)}</td>
@@ -1084,7 +1148,7 @@ const Main: React.FC<MainProps> = ({
                 </tr>
               </tbody>
             </table>
-          </div>
+          </CollapsibleTableSection>
           <div className="note">
             Marginal rate is color-coded: 22%+ is amber, 24%+ is red. Effective rate = (federal + state tax) ÷ gross income.
             IRMAA is based on income from 2 years prior and applies at age 65+.
@@ -1127,8 +1191,7 @@ const Main: React.FC<MainProps> = ({
             </div>
           </div>
 
-          <div className="detail-section-title" style={{ marginTop: '1.2rem' }}>Year-by-year cash flow</div>
-          <div className="optimizer-table-wrap">
+          <CollapsibleTableSection id="cashflow" title="Year-by-year cash flow" meta={resultAgeRange}>
             <table className="optimizer-table opt-schedule-table">
               <thead>
                 <tr>
@@ -1149,7 +1212,7 @@ const Main: React.FC<MainProps> = ({
                   const net = totalIn - totalOut;
                   const depleted = r.total <= 0;
                   return (
-                    <tr key={r.age} style={survivorRowStyle(r, depleted ? { background: '#FFF5F5' } : undefined)}>
+                    <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r, depleted ? { background: '#FFF5F5' } : undefined)}>
                       <td>{r.age}<SurvivorTag age={r.age} /></td>
                       <td>{fmt(totalIn)}</td>
                       <td>{fmt(r.totalSpending)}</td>
@@ -1169,7 +1232,7 @@ const Main: React.FC<MainProps> = ({
                 })}
               </tbody>
             </table>
-          </div>
+          </CollapsibleTableSection>
           <div className="note">
             Withdrawal rate = total portfolio withdrawals ÷ portfolio value. Above 4% is yellow, above 6% is red.
             Net cash flow near zero is expected — the model draws exactly what is needed each year.

@@ -121,6 +121,13 @@ h1 { font-size: 16px; font-weight: 500; padding: 0.75rem 1rem; background: #fff;
 .optimizer-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .optimizer-table th { background: #f0efe8; padding: 6px 8px; text-align: left; font-weight: 500; font-size: 10px; color: #666; white-space: nowrap; border-bottom: 0.5px solid rgba(0,0,0,0.1); }
 .optimizer-table td { padding: 6px 8px; border-bottom: 0.5px solid rgba(0,0,0,0.06); white-space: nowrap; }
+.optimizer-table .survivor-row td {
+  background: #f4f4f1;
+  color: #777;
+}
+.optimizer-table .survivor-row:first-child td {
+  border-top-color: currentColor;
+}
 .optimizer-table .opt-row-best td { background: rgba(29,158,117,0.08); }
 .optimizer-table .opt-row-baseline td { background: rgba(231,76,60,0.04); }
 .optimizer-table .opt-row-current td { background: rgba(52,152,219,0.06); }
@@ -130,6 +137,77 @@ h1 { font-size: 16px; font-weight: 500; padding: 0.75rem 1rem; background: #fff;
 .chart-subtitle { font-size: 12px; font-weight: 500; color: #555; margin: 0.75rem 0 0.3rem; }
 .opt-schedule-table td:first-child { font-weight: 500; }
 .opt-timestamp { font-size: 10px; font-weight: 400; color: #999; margin-left: 8px; }
+.collapsible-table {
+  margin-top: 1.2rem;
+  border: 0.5px solid rgba(0,0,0,0.12);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.collapsible-table-header {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: none;
+  background: #fff;
+  color: #1a1a1a;
+  padding: 0 0.85rem;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.collapsible-table-header:hover {
+  background: #f7f7f4;
+}
+.collapsible-table-header:focus-visible {
+  outline: 2px solid #378ADD;
+  outline-offset: -2px;
+}
+.collapsible-table-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.collapsible-table-chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+  flex: 0 0 auto;
+  color: #666;
+}
+.collapsible-table:not(.open) .collapsible-table-chevron {
+  transform: rotate(-45deg);
+}
+.collapsible-table-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+}
+.collapsible-table-meta,
+.collapsible-table-action {
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+}
+.collapsible-table-body {
+  margin-bottom: 0;
+  border-top: 0.5px solid rgba(0,0,0,0.1);
+}
+.collapsible-table-body .optimizer-table th:first-child,
+.collapsible-table-body .optimizer-table td:first-child {
+  padding-left: 0.85rem;
+}
+.collapsible-table-body .optimizer-table th:last-child,
+.collapsible-table-body .optimizer-table td:last-child {
+  padding-right: 0.85rem;
+}
 
 /* RMD page */
 .rmd-layout { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(300px, 0.9fr); gap: 1rem; align-items: start; }
@@ -140,10 +218,36 @@ h1 { font-size: 16px; font-weight: 500; padding: 0.75rem 1rem; background: #fff;
 .rmd-summary-value.accent { color: #BA7517; }
 .rmd-year-table { max-height: 320px; overflow-y: auto; margin-bottom: 0; }
 .rmd-year-table .optimizer-table th { position: sticky; top: 0; z-index: 1; }
+.rmd-tax-cost-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 1fr));
+  gap: 0.75rem;
+  padding: 0.85rem 0.85rem 0.55rem;
+}
+.rmd-conversion-tax-table {
+  margin-bottom: 0;
+}
+.rmd-tax-cost-note {
+  margin: 0.75rem 0.85rem 0.85rem;
+  padding: 0.7rem 0.85rem;
+  border-left: 3px solid;
+  border-radius: 6px;
+}
+.rmd-tax-cost-note.info {
+  background: #EBF5FB;
+  border-left-color: #3498DB;
+  color: #1A5276;
+}
+.rmd-tax-cost-note.warning {
+  background: #FDEDEC;
+  border-left-color: #E74C3C;
+  color: #922B21;
+}
 
 @media (max-width: 1050px) {
   .rmd-layout { grid-template-columns: 1fr; }
   .rmd-summary { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+  .rmd-tax-cost-summary { grid-template-columns: 1fr; }
 }
 
 /* Tax analysis page */
@@ -470,6 +574,22 @@ body {
   color: var(--warning);
 }
 
+.rmd-tax-cost-summary {
+  background: rgba(255,255,255,0.015);
+}
+
+.rmd-tax-cost-note.info {
+  background: rgba(103,212,197,0.10);
+  border-left-color: var(--accent);
+  color: var(--text-muted);
+}
+
+.rmd-tax-cost-note.warning {
+  background: rgba(239,134,160,0.12);
+  border-left-color: var(--danger);
+  color: var(--text-muted);
+}
+
 .mval.ok {
   color: var(--accent);
 }
@@ -715,6 +835,46 @@ input[type=range] {
 .optimizer-table td {
   color: var(--text);
   border-bottom-color: var(--border);
+}
+
+.optimizer-table .survivor-row td {
+  background: rgba(103,212,197,0.045);
+  color: var(--text-muted);
+}
+
+.optimizer-table .survivor-row[style*="border-top"] td {
+  border-top: 2px dashed rgba(154,165,177,0.5);
+}
+
+.collapsible-table {
+  border-color: var(--border);
+}
+
+.collapsible-table-header {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.collapsible-table-header:hover {
+  background: var(--panel-2);
+}
+
+.collapsible-table-header:focus-visible {
+  outline-color: #4B7DFF;
+}
+
+.collapsible-table-title {
+  color: var(--text);
+}
+
+.collapsible-table-chevron,
+.collapsible-table-meta,
+.collapsible-table-action {
+  color: var(--text-muted);
+}
+
+.collapsible-table-body {
+  border-top-color: var(--border);
 }
 
 .detail-panel {
