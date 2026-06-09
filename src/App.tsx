@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { InputParams, ProjectionRow, Account } from './types';
+import type { InputParams, ProjectionRow, Account, PlannerPage } from './types';
 import { fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, runProjection, fmt, ssInterpolate } from './financial';
 import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } from './monteCarlo';
 import { runOptimizer } from './optimizer';
 import type { OptimizationOutput } from './optimizer';
 import { exportToSpreadsheet } from './exportSpreadsheet';
-import Sidebar from './components/Sidebar';
 import Main from './components/Main';
 
 const PLANS_KEY = 'retirement-planner-plans-v2';
@@ -250,14 +249,15 @@ function importPlanFromFile(file: File): Promise<{ inputs: InputParams; conversi
   });
 }
 
-const btnStyle: React.CSSProperties = { padding: '4px 10px', fontSize: '11px' };
-const dangerStyle: React.CSSProperties = { ...btnStyle, color: '#C0392B', borderColor: 'rgba(192,57,43,0.4)' };
+type NavItem = { key: PlannerPage; label: string; section: 'SETUP' | 'RESULTS' | 'TOOLS'; configured?: boolean };
 
 const App: React.FC = () => {
   const [plans, setPlans] = useState<StoredPlan[]>(() => loadPlans().plans);
   const [activePlanId, setActivePlanId] = useState<string>(() => loadPlans().activePlanId);
-  const [activeTab, setActiveTab] = useState<'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer' | 'expenses' | 'accounts'>('accounts');
+  const [activeTab, setActiveTab] = useState<PlannerPage>('about');
   const [rows, setRows] = useState<ProjectionRow[]>([]);
+  const [planMenuOpen, setPlanMenuOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [metrics, setMetrics] = useState<{ m1: string; m2: string; m3: string; m4: string; m5: string }>({
     m1: '—', m2: '—', m3: '—', m4: '—', m5: '—',
   });
@@ -268,6 +268,30 @@ const App: React.FC = () => {
   const conversionSchedule = activePlan.conversionSchedule;
   const optMinStartAge = activePlan.optMinStartAge ?? inputs.age;
   const monteCarloSettings = { ...DEFAULT_MONTE_CARLO_SETTINGS, ...(activePlan.monteCarloSettings ?? {}) };
+  const accountsConfigured =
+    (inputs.accounts?.length ?? 0) > 0 ||
+    inputs.tradBal > 0 || inputs.rothBal > 0 || inputs.taxableBal > 0 || inputs.hsaBal > 0 ||
+    inputs.tradContrib > 0 || inputs.rothContrib > 0 || inputs.taxableContrib > 0 || inputs.hsaContrib > 0 ||
+    !!inputs.salary;
+  const expensesConfigured =
+    (inputs.expenseItems?.length ?? 0) > 0 ||
+    inputs.expenses > 0 || inputs.healthcareExpenses > 0 ||
+    inputs.discretionaryExpenses > 0 || inputs.ltcExpenses > 0;
+  const navItems: NavItem[] = [
+    { key: 'about', label: 'About You', section: 'SETUP', configured: true },
+    { key: 'social', label: 'Social Security', section: 'SETUP', configured: inputs.ss > 0 || !!inputs.ss62 || !!inputs.ss67 || !!inputs.ss70 },
+    { key: 'conversions', label: 'Roth Conversions', section: 'SETUP', configured: inputs.rothConv > 0 || !!conversionSchedule },
+    { key: 'taxsettings', label: 'Tax Settings', section: 'SETUP', configured: inputs.includeIRMAA || inputs.includeStateTax || inputs.includeMedicarePremiums || inputs.includeAcaPremiumCredits || inputs.qcdAnnual > 0 },
+    { key: 'accounts', label: 'Accounts', section: 'SETUP', configured: accountsConfigured },
+    { key: 'expenses', label: 'Expenses', section: 'SETUP', configured: expensesConfigured },
+    { key: 'balance', label: 'Balances', section: 'RESULTS' },
+    { key: 'income', label: 'Income', section: 'RESULTS' },
+    { key: 'rmd', label: 'RMDs & Conversions', section: 'RESULTS' },
+    { key: 'tax', label: 'Tax Analysis', section: 'RESULTS' },
+    { key: 'cashflow', label: 'Cash Flow', section: 'RESULTS' },
+    { key: 'optimizer', label: 'Roth Optimizer', section: 'TOOLS' },
+    { key: 'mc', label: 'Monte Carlo', section: 'TOOLS' },
+  ];
 
   // Persist whenever plans or active ID change
   useEffect(() => {
@@ -380,18 +404,21 @@ const App: React.FC = () => {
     const plan = createPlan(`Plan ${plans.length + 1}`);
     setPlans(prev => [...prev, plan]);
     setActivePlanId(plan.id);
-    setActiveTab('accounts');
+    setActiveTab('about');
+    setPlanMenuOpen(false);
   };
 
   const duplicatePlan = () => {
     const plan: StoredPlan = { ...activePlan, id: newPlanId(), name: `${activePlan.name} (copy)` };
     setPlans(prev => [...prev, plan]);
     setActivePlanId(plan.id);
+    setPlanMenuOpen(false);
   };
 
   const renamePlan = () => {
     const name = window.prompt('Rename plan:', activePlan.name);
     if (name?.trim()) updateActivePlan({ name: name.trim() });
+    setPlanMenuOpen(false);
   };
 
   const resetPlan = () => {
@@ -402,6 +429,7 @@ const App: React.FC = () => {
       optMinStartAge: undefined,
       monteCarloSettings: DEFAULT_MONTE_CARLO_SETTINGS,
     });
+    setPlanMenuOpen(false);
   };
 
   const deletePlan = () => {
@@ -410,6 +438,7 @@ const App: React.FC = () => {
     const remaining = plans.filter(p => p.id !== activePlanId);
     setPlans(remaining);
     setActivePlanId(remaining[remaining.length - 1].id);
+    setPlanMenuOpen(false);
   };
 
   // ---- File I/O ----
@@ -442,47 +471,49 @@ const App: React.FC = () => {
     <div className="app">
       <div className="header">
         {/* Plan controls — left */}
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <select
-            value={activePlanId}
-            onChange={e => setActivePlanId(e.target.value)}
-            style={{ fontSize: '12px', padding: '4px 8px', border: '1px solid rgba(0,0,0,0.18)', borderRadius: '5px', background: '#fff', cursor: 'pointer', maxWidth: '180px' }}
+        <div className="plan-menu">
+          <button
+            className={`plan-trigger ${planMenuOpen ? 'open' : ''}`}
+            onClick={() => setPlanMenuOpen(open => !open)}
+            aria-haspopup="menu"
+            aria-expanded={planMenuOpen}
           >
-            {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-
-          <button className="tab" onClick={renamePlan} style={btnStyle} title="Rename this plan">
-            Rename
+            <span className="plan-trigger-dot" />
+            <span>
+              <span className="plan-trigger-label">Active plan</span>
+              <span className="plan-trigger-name">{activePlan.name}</span>
+            </span>
+            <span className="plan-trigger-chevron">{planMenuOpen ? '⌃' : '⌄'}</span>
           </button>
-          <button className="tab" onClick={addPlan} style={btnStyle}>
-            + New Plan
-          </button>
-          <button className="tab" onClick={duplicatePlan} style={btnStyle} title="Duplicate this plan">
-            Duplicate
-          </button>
-
-          <div style={{ width: '2px', height: '16px', background: 'rgba(0,0,0,0.25)', borderRadius: '1px', margin: '0 2px' }} />
-
-          <button className="tab" onClick={resetPlan} style={dangerStyle} title="Reset to blank defaults">
-            Reset
-          </button>
-          <button className="tab" onClick={deletePlan} disabled={plans.length <= 1}
-            style={{ ...dangerStyle, opacity: plans.length <= 1 ? 0.35 : 1 }}
-            title={plans.length <= 1 ? 'Cannot delete the only plan' : 'Delete this plan'}>
-            Delete
-          </button>
+          {planMenuOpen && (
+            <div className="plan-dropdown" role="menu">
+              <div className="plan-list">
+                {plans.map(plan => (
+                  <button
+                    key={plan.id}
+                    className={`plan-row ${plan.id === activePlanId ? 'active' : ''}`}
+                    onClick={() => { setActivePlanId(plan.id); setPlanMenuOpen(false); }}
+                  >
+                    <span className="plan-row-dot" />
+                    <span>{plan.name}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="plan-menu-divider" />
+              <button className="plan-action" onClick={addPlan}>New plan</button>
+              <button className="plan-action" onClick={renamePlan}>Rename plan</button>
+              <button className="plan-action" onClick={duplicatePlan}>Duplicate plan</button>
+              <button className="plan-action" onClick={resetPlan}>Reset to defaults</button>
+              <button className="plan-action danger" onClick={deletePlan} disabled={plans.length <= 1}>Delete plan</button>
+            </div>
+          )}
         </div>
 
         {/* File I/O — right */}
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <button className="tab" onClick={handleExport} style={btnStyle}>
-            Export JSON
-          </button>
-          <button className="tab" onClick={handleExportSpreadsheet} style={btnStyle}>
-            Export Excel
-          </button>
-          <label className="tab" style={{ ...btnStyle, cursor: 'pointer' }}>
-            Import
+        <div className="file-actions">
+          <label className="file-import">
+            <span className="file-icon">⇧</span>
+            <span>Import</span>
             <input
               type="file"
               accept=".json"
@@ -490,19 +521,52 @@ const App: React.FC = () => {
               onChange={(e) => { if (e.target.files?.[0]) { handleImport(e.target.files[0]); e.target.value = ''; } }}
             />
           </label>
+          <div className="export-menu">
+            <button
+              className={`export-trigger ${exportMenuOpen ? 'open' : ''}`}
+              onClick={() => setExportMenuOpen(open => !open)}
+              aria-haspopup="menu"
+              aria-expanded={exportMenuOpen}
+            >
+              <span>Export</span>
+              <span className="export-chevron">{exportMenuOpen ? '⌃' : '⌄'}</span>
+            </button>
+            {exportMenuOpen && (
+              <div className="export-dropdown" role="menu">
+                <button className="export-row" onClick={() => { handleExport(); setExportMenuOpen(false); }}>
+                  <span>Export as JSON</span>
+                  <span>.json</span>
+                </button>
+                <button className="export-row" onClick={() => { handleExportSpreadsheet(); setExportMenuOpen(false); }}>
+                  <span>Export to Excel</span>
+                  <span>.xls</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <Sidebar
-        inputs={inputs}
-        onInputChange={handleInputChange}
-        conversionSchedule={conversionSchedule}
-        onClearSchedule={() => setConversionSchedule(null)}
-      />
+      <nav className="left-nav">
+        {(['SETUP', 'RESULTS', 'TOOLS'] as const).map(section => (
+          <div key={section} className="nav-section">
+            <div className="nav-section-label">{section}</div>
+            {navItems.filter(item => item.section === section).map(item => (
+              <button
+                key={item.key}
+                className={`nav-item ${activeTab === item.key ? 'active' : ''}`}
+                onClick={() => setActiveTab(item.key)}
+              >
+                <span className={`nav-dot ${item.configured === false ? 'missing' : ''}`} />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
       <Main
         inputs={inputs}
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
         rows={rows}
         metrics={metrics}
         optimization={optimization}

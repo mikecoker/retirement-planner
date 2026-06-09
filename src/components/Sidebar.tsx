@@ -8,9 +8,19 @@ interface SidebarProps {
   onInputChange: (field: keyof InputParams, value: string | number | boolean) => void;
   conversionSchedule: Record<number, number> | null;
   onClearSchedule: () => void;
+  page?: 'about' | 'social' | 'conversions' | 'taxsettings';
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSchedule, onClearSchedule }) => {
+const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSchedule, onClearSchedule, page }) => {
+  const showAll = page === undefined;
+  const conversionScheduleRows = conversionSchedule
+    ? Object.entries(conversionSchedule)
+      .map(([age, amount]) => ({ age: Number(age), amount }))
+      .sort((a, b) => a.age - b.age)
+    : [];
+  const conversionScheduleTotal = conversionScheduleRows.reduce((sum, row) => sum + row.amount, 0);
+  const formatDollars = (value: number) => `$${Math.round(value).toLocaleString()}`;
+
   const handleRangeChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
     onInputChange(field, Number((e.target as HTMLInputElement).value));
   };
@@ -39,9 +49,9 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
   };
 
   return (
-    <div className="sidebar">
+    <div className={showAll ? 'sidebar' : 'setup-page'}>
       {/* Personal */}
-      <div>
+      {(showAll || page === 'about') && <div>
         <div className="section-label">About you</div>
         <div className="field">
           <TipLabel text="Current age" />
@@ -97,209 +107,20 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             </div>
             <div className="field">
               <TipLabel text="Spouse life expectancy" />
-              <input type="number" value={inputs.spouseLifeExp ?? ''}
-                step={1} placeholder="e.g. 90"
-                onInput={(e) => handleNumberChange('spouseLifeExp', e)} />
+              <div className="range-row">
+                <input type="range" min={70} max={100} value={inputs.spouseLifeExp ?? inputs.lifeExp} step={1}
+                  onInput={(e) => handleRangeChange('spouseLifeExp', e)} />
+                <span className="range-val">{inputs.spouseLifeExp ?? inputs.lifeExp}</span>
+              </div>
             </div>
-            {/* Spouse SS type selector */}
-            <div className="field">
-              <TipLabel text="Spouse SS benefit type" />
-              <select
-                value={inputs.spouseSsType ?? 'own'}
-                onChange={(e) => onInputChange('spouseSsType', e.target.value as 'own' | 'spousal' | 'combined')}
-              >
-                <option value="own">Own work record</option>
-                <option value="spousal">Spousal benefit (50% of your PIA)</option>
-                <option value="combined">Own record + spousal top-up (SSA deemed filing)</option>
-              </select>
-              {(inputs.spouseSsType ?? 'own') === 'combined' && (
-                <div style={{ fontSize: '10px', color: '#777', marginTop: '3px' }}>
-                  SSA automatically pays whichever is higher: spouse's own benefit or 50% of your PIA. They are not added together.
-                </div>
-              )}
-            </div>
-            {(() => {
-              const ssType = inputs.spouseSsType ?? 'own';
-              const claimAge = inputs.spouseSsAge ?? 67;
-              const showOwn = ssType === 'own' || ssType === 'combined';
-              const showSpousal = ssType === 'spousal' || ssType === 'combined';
-
-              // Spousal benefit helper
-              const primaryFra = fullRetirementAge(inferredBirthYear(inputs));
-              const spouseFra = fullRetirementAge(inferredSpouseBirthYear(inputs) ?? inferredBirthYear(inputs));
-              const primaryPIA = inputs.ss67 ? inputs.ss67 / (primaryFra <= 67 ? 1 + 0.08 * (67 - primaryFra) : 1) : inputs.ss;
-              const spousalAt = (a: number) => {
-                const effAge = Math.min(a, spouseFra);
-                const mo = Math.max(0, Math.round((spouseFra - effAge) * 12));
-                const f = Math.min(mo, 36) * (25 / 36) / 100;
-                const x = Math.max(0, mo - 36) * (5 / 12) / 100;
-                return Math.round(primaryPIA * 0.5 * (1 - f - x));
-              };
-
-              return (
-                <>
-                  {/* Own-record SSA estimate inputs */}
-                  {showOwn && (
-                    <div className="field">
-                      <TipLabel text="Spouse SSA estimates ($/mo)" />
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px', marginTop: '4px' }}>
-                        {(['spouseSs62', 'spouseSs67', 'spouseSs70'] as const).map((f, i) => (
-                          <div key={f} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <span style={{ fontSize: '10px', color: '#888', textAlign: 'center' }}>{['At 62','At 67','At 70'][i]}</span>
-                            <input type="number" value={inputs[f] || ''} step={50} placeholder="0"
-                              style={{ textAlign: 'center', padding: '3px 4px' }}
-                              onInput={(e) => onInputChange(f, Number((e.target as HTMLInputElement).value) || undefined as any)} />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Claim age slider */}
-                  <div className="field">
-                    <TipLabel text="Spouse claim age" />
-                    <div className="range-row">
-                      <input type="range" min={62} max={ssType === 'spousal' ? 67 : 70}
-                        value={ssType === 'spousal' ? Math.min(claimAge, 67) : claimAge} step={1}
-                        onInput={(e) => handleRangeChange('spouseSsAge', e)} />
-                      <span className="range-val">{ssType === 'spousal' ? Math.min(claimAge, 67) : claimAge}</span>
-                    </div>
-                    {showSpousal && (
-                      <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>
-                        Spousal benefit doesn't increase past FRA (age {spouseFra.toFixed(1)}).
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Spousal benefit breakdown */}
-                  {showSpousal && (primaryPIA > 0) && (() => {
-                    const effClaimAge = Math.min(claimAge, 67);
-                    const fraMonthly = Math.round(primaryPIA * 0.5);
-                    const monthly = spousalAt(effClaimAge);
-                    const monthsBefore = Math.max(0, Math.round((spouseFra - effClaimAge) * 12));
-                    const f = Math.min(monthsBefore, 36) * (25 / 36) / 100;
-                    const x = Math.max(0, monthsBefore - 36) * (5 / 12) / 100;
-                    const reductionPct = ((f + x) * 100).toFixed(1);
-                    return (
-                      <div className="field">
-                        <div style={{ fontSize: '11px', color: '#555', background: '#FFF8E7', border: '1px solid #F0D080', borderRadius: '4px', padding: '6px 8px' }}>
-                          <div style={{ fontWeight: 600, marginBottom: '3px' }}>Spousal benefit (50% of your PIA)</div>
-                          <div>At FRA ({spouseFra.toFixed(1)}): <strong>${fraMonthly.toLocaleString()}/mo</strong></div>
-                          {monthsBefore > 0
-                            ? <div>At age {effClaimAge}: <strong>${monthly.toLocaleString()}/mo</strong> <span style={{ color: '#888' }}>(−{reductionPct}% early claim)</span></div>
-                            : null}
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Benefit summary display */}
-                  {showOwn && inputs.spouseSs62 && inputs.spouseSs67 && inputs.spouseSs70 && (() => {
-                    const ownBenefit = ssInterpolate(inputs.spouseSs62, inputs.spouseSs67, inputs.spouseSs70, claimAge, spouseFra);
-                    const spousalBenefit = spousalAt(Math.min(claimAge, 67));
-                    if (ssType === 'combined') {
-                      const ownWins = ownBenefit >= spousalBenefit;
-                      return (
-                        <div className="field">
-                          <div style={{ fontSize: '11px', color: '#555', background: '#F0F4FF', borderRadius: '4px', padding: '6px 8px' }}>
-                            <div style={{ fontWeight: 600, marginBottom: '4px' }}>SSA effective benefit at age {claimAge}</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', background: ownWins ? '#E8F5E9' : undefined, borderRadius: '3px', padding: '2px 4px' }}>
-                                <span>Own record{ownWins ? ' ✓' : ''}</span>
-                                <strong>${ownBenefit.toLocaleString()}/mo</strong>
-                              </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', background: !ownWins ? '#E8F5E9' : undefined, borderRadius: '3px', padding: '2px 4px' }}>
-                                <span>Spousal (50% PIA){!ownWins ? ' ✓' : ''}</span>
-                                <strong>${spousalBenefit.toLocaleString()}/mo</strong>
-                              </div>
-                            </div>
-                            <div style={{ marginTop: '5px', borderTop: '1px solid #ccc', paddingTop: '4px', color: '#1A5276', fontWeight: 600 }}>
-                              Pays: ${Math.max(ownBenefit, spousalBenefit).toLocaleString()}/mo
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return (
-                      <div className="field">
-                        <div style={{ fontSize: '12px', color: '#555', background: '#F0F4FF', borderRadius: '4px', padding: '6px 8px' }}>
-                          <span style={{ fontWeight: 600, color: '#1A5276' }}>${ownBenefit.toLocaleString()}/mo</span>
-                          <span style={{ marginLeft: 6, color: '#888' }}>at age {claimAge} (auto-calculated)</span>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Own-record comparison table (own or combined) */}
-                  {showOwn && inputs.spouseSs62 && inputs.spouseSs67 && inputs.spouseSs70 && (() => {
-                    const s62 = inputs.spouseSs62!;
-                    const s67 = inputs.spouseSs67!;
-                    const s70 = inputs.spouseSs70!;
-                    const ownAt = (a: number) => ssInterpolate(s62, s67, s70, a, spouseFra);
-                    const breakeven = (a: number): string => {
-                      if (a === 67) return '—';
-                      const mo = ownAt(a);
-                      if (a < 67) {
-                        const diff = s67 - mo;
-                        if (diff <= 0) return '—';
-                        return `~${(67 + ((67 - a) * 12 * mo) / diff / 12).toFixed(1)}`;
-                      }
-                      const diff = mo - s67;
-                      if (diff <= 0) return '—';
-                      return `~${(a + ((a - 67) * 12 * s67) / diff / 12).toFixed(1)}`;
-                    };
-                    return (
-                      <div style={{ marginTop: '2px', overflowX: 'auto' }}>
-                        <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
-                          <thead>
-                            <tr style={{ borderBottom: '1px solid #ddd', color: '#666' }}>
-                              <th style={{ textAlign: 'left', padding: '3px 4px', fontWeight: 500 }}>Age</th>
-                              <th style={{ textAlign: 'right', padding: '3px 4px', fontWeight: 500 }}>Own</th>
-                              {ssType === 'combined' && <th style={{ textAlign: 'right', padding: '3px 4px', fontWeight: 500 }}>Spousal</th>}
-                              {ssType === 'combined' && <th style={{ textAlign: 'right', padding: '3px 4px', fontWeight: 500, color: '#1A5276' }}>Pays</th>}
-                              {ssType === 'own' && <th style={{ textAlign: 'right', padding: '3px 4px', fontWeight: 500 }}>$/yr</th>}
-                              {ssType === 'own' && <th style={{ textAlign: 'right', padding: '3px 4px', fontWeight: 500 }}>Break-even</th>}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {[62, 63, 64, 65, 66, 67, 68, 69, 70].map(a => {
-                              const own = ownAt(a);
-                              const spousal = spousalAt(Math.min(a, 67));
-                              const effective = ssType === 'combined' ? Math.max(own, spousal) : own;
-                              const isSelected = a === (inputs.spouseSsAge ?? 67);
-                              const isFRA = a === Math.round(spouseFra);
-                              return (
-                                <tr key={a}
-                                  style={{ background: isSelected ? '#EBF5FB' : isFRA ? '#F0FFF8' : undefined, fontWeight: isSelected || isFRA ? 600 : undefined, cursor: 'pointer' }}
-                                  onClick={() => onInputChange('spouseSsAge', a)}>
-                                  <td style={{ padding: '3px 4px' }}>{a}{isFRA ? ' ★' : ''}{isSelected && !isFRA ? ' ←' : ''}</td>
-                                  <td style={{ textAlign: 'right', padding: '3px 4px', color: ssType === 'combined' && own < spousal ? '#aaa' : undefined }}>${own.toLocaleString()}</td>
-                                  {ssType === 'combined' && <td style={{ textAlign: 'right', padding: '3px 4px', color: spousal < own ? '#aaa' : undefined }}>${spousal.toLocaleString()}</td>}
-                                  {ssType === 'combined' && <td style={{ textAlign: 'right', padding: '3px 4px', color: '#1A5276', fontWeight: 600 }}>${effective.toLocaleString()}</td>}
-                                  {ssType === 'own' && <td style={{ textAlign: 'right', padding: '3px 4px' }}>${Math.round(own * 12 / 1000)}K</td>}
-                                  {ssType === 'own' && <td style={{ textAlign: 'right', padding: '3px 4px', color: '#666' }}>{breakeven(a)}</td>}
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                        <div style={{ fontSize: '10px', color: '#999', marginTop: '4px' }}>
-                          {ssType === 'combined' ? 'Dimmed column = lower amount (SSA pays the higher). Click a row to select.' : 'Break-even vs FRA. Click a row to select.'}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </>
-              );
-            })()}
           </>
         )}
-      </div>
+      </div>}
 
-      <hr className="divider" />
+      {showAll && <hr className="divider" />}
 
       {/* Social Security */}
-      <div>
+      {(showAll || page === 'social') && <div>
         <div className="section-label">Social Security</div>
 
         {/* SSA estimates */}
@@ -428,27 +249,184 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             <span className="range-val">{((inputs.ssCOLA ?? 0.025) * 100).toFixed(2)}%</span>
           </div>
         </div>
-      </div>
 
-      <hr className="divider" />
+        {inputs.filingStatus === 'married' && (
+          <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '0.5px solid rgba(0,0,0,0.1)' }}>
+            <div className="section-label">Spouse Social Security</div>
+            <div className="field">
+              <TipLabel text="Spouse SS benefit type" />
+              <select
+                value={inputs.spouseSsType ?? 'own'}
+                onChange={(e) => onInputChange('spouseSsType', e.target.value as 'own' | 'spousal' | 'combined')}
+              >
+                <option value="own">Own work record</option>
+                <option value="spousal">Spousal benefit (50% of your PIA)</option>
+                <option value="combined">Own record + spousal top-up (SSA deemed filing)</option>
+              </select>
+              {(inputs.spouseSsType ?? 'own') === 'combined' && (
+                <div style={{ fontSize: '10px', color: '#777', marginTop: '3px' }}>
+                  SSA automatically pays whichever is higher: spouse's own benefit or 50% of your PIA. They are not added together.
+                </div>
+              )}
+            </div>
+            {(() => {
+              const ssType = inputs.spouseSsType ?? 'own';
+              const claimAge = inputs.spouseSsAge ?? 67;
+              const showOwn = ssType === 'own' || ssType === 'combined';
+              const showSpousal = ssType === 'spousal' || ssType === 'combined';
+              const primaryFra = fullRetirementAge(inferredBirthYear(inputs));
+              const spouseFra = fullRetirementAge(inferredSpouseBirthYear(inputs) ?? inferredBirthYear(inputs));
+              const primaryPIA = inputs.ss67 ? inputs.ss67 / (primaryFra <= 67 ? 1 + 0.08 * (67 - primaryFra) : 1) : inputs.ss;
+              const spousalAt = (a: number) => {
+                const effAge = Math.min(a, spouseFra);
+                const mo = Math.max(0, Math.round((spouseFra - effAge) * 12));
+                const f = Math.min(mo, 36) * (25 / 36) / 100;
+                const x = Math.max(0, mo - 36) * (5 / 12) / 100;
+                return Math.round(primaryPIA * 0.5 * (1 - f - x));
+              };
+
+              return (
+                <>
+                  {showOwn && (
+                    <div className="field">
+                      <TipLabel text="Spouse SSA estimates ($/mo)" />
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px', marginTop: '4px' }}>
+                        {(['spouseSs62', 'spouseSs67', 'spouseSs70'] as const).map((f, i) => (
+                          <div key={f} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span style={{ fontSize: '10px', color: '#888', textAlign: 'center' }}>{['At 62','At 67','At 70'][i]}</span>
+                            <input type="number" value={inputs[f] || ''} step={50} placeholder="0"
+                              style={{ textAlign: 'center', padding: '3px 4px' }}
+                              onInput={(e) => onInputChange(f, Number((e.target as HTMLInputElement).value) || undefined as any)} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="field">
+                    <TipLabel text="Spouse claim age" />
+                    <div className="range-row">
+                      <input type="range" min={62} max={ssType === 'spousal' ? 67 : 70}
+                        value={ssType === 'spousal' ? Math.min(claimAge, 67) : claimAge} step={1}
+                        onInput={(e) => handleRangeChange('spouseSsAge', e)} />
+                      <span className="range-val">{ssType === 'spousal' ? Math.min(claimAge, 67) : claimAge}</span>
+                    </div>
+                    {showSpousal && (
+                      <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>
+                        Spousal benefit doesn't increase past FRA (age {spouseFra.toFixed(1)}).
+                      </div>
+                    )}
+                  </div>
+
+                  {showSpousal && primaryPIA > 0 && (() => {
+                    const effClaimAge = Math.min(claimAge, 67);
+                    const fraMonthly = Math.round(primaryPIA * 0.5);
+                    const monthly = spousalAt(effClaimAge);
+                    const monthsBefore = Math.max(0, Math.round((spouseFra - effClaimAge) * 12));
+                    const f = Math.min(monthsBefore, 36) * (25 / 36) / 100;
+                    const x = Math.max(0, monthsBefore - 36) * (5 / 12) / 100;
+                    const reductionPct = ((f + x) * 100).toFixed(1);
+                    return (
+                      <div className="field">
+                        <div style={{ fontSize: '11px', color: '#555', background: '#FFF8E7', border: '1px solid #F0D080', borderRadius: '4px', padding: '6px 8px' }}>
+                          <div style={{ fontWeight: 600, marginBottom: '3px' }}>Spousal benefit (50% of your PIA)</div>
+                          <div>At FRA ({spouseFra.toFixed(1)}): <strong>${fraMonthly.toLocaleString()}/mo</strong></div>
+                          {monthsBefore > 0
+                            ? <div>At age {effClaimAge}: <strong>${monthly.toLocaleString()}/mo</strong> <span style={{ color: '#888' }}>(-{reductionPct}% early claim)</span></div>
+                            : null}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {showOwn && inputs.spouseSs62 && inputs.spouseSs67 && inputs.spouseSs70 && (() => {
+                    const ownBenefit = ssInterpolate(inputs.spouseSs62, inputs.spouseSs67, inputs.spouseSs70, claimAge, spouseFra);
+                    const spousalBenefit = spousalAt(Math.min(claimAge, 67));
+                    if (ssType === 'combined') {
+                      const ownWins = ownBenefit >= spousalBenefit;
+                      return (
+                        <div className="field">
+                          <div style={{ fontSize: '11px', color: '#555', background: '#F0F4FF', borderRadius: '4px', padding: '6px 8px' }}>
+                            <div style={{ fontWeight: 600, marginBottom: '4px' }}>SSA effective benefit at age {claimAge}</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', background: ownWins ? '#E8F5E9' : undefined, borderRadius: '3px', padding: '2px 4px' }}>
+                                <span>Own record{ownWins ? ' ✓' : ''}</span>
+                                <strong>${ownBenefit.toLocaleString()}/mo</strong>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', background: !ownWins ? '#E8F5E9' : undefined, borderRadius: '3px', padding: '2px 4px' }}>
+                                <span>Spousal (50% PIA){!ownWins ? ' ✓' : ''}</span>
+                                <strong>${spousalBenefit.toLocaleString()}/mo</strong>
+                              </div>
+                            </div>
+                            <div style={{ marginTop: '5px', borderTop: '1px solid #ccc', paddingTop: '4px', color: '#1A5276', fontWeight: 600 }}>
+                              Pays: ${Math.max(ownBenefit, spousalBenefit).toLocaleString()}/mo
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="field">
+                        <div style={{ fontSize: '12px', color: '#555', background: '#F0F4FF', borderRadius: '4px', padding: '6px 8px' }}>
+                          <span style={{ fontWeight: 600, color: '#1A5276' }}>${ownBenefit.toLocaleString()}/mo</span>
+                          <span style={{ marginLeft: 6, color: '#888' }}>at age {claimAge} (auto-calculated)</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
+              );
+            })()}
+          </div>
+        )}
+      </div>}
+
+      {showAll && <hr className="divider" />}
 
       {/* Roth conversions */}
-      <div>
+      {(showAll || page === 'conversions') && <div>
         <div className="section-label">Roth conversions</div>
         {conversionSchedule ? (
-          <div style={{ background: '#EAF4FB', border: '1px solid #AED6F1', borderRadius: '5px', padding: '8px 10px', fontSize: '11px', color: '#1A5276' }}>
-            <div style={{ fontWeight: 600, marginBottom: '4px' }}>
-              Optimizer schedule active
+          <div style={{ background: '#EAF4FB', border: '1px solid #AED6F1', borderRadius: '5px', padding: '10px 12px', fontSize: '12px', color: '#1A5276' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start', marginBottom: '8px' }}>
+              <div>
+                <div style={{ fontWeight: 700, marginBottom: '3px' }}>
+                  Optimizer schedule active
+                </div>
+                <div style={{ color: '#555' }}>
+                  Manual conversion settings are hidden while this optimizer schedule is applied.
+                </div>
+              </div>
+              <button
+                onClick={onClearSchedule}
+                style={{ flexShrink: 0, fontSize: '12px', padding: '4px 10px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                Switch to manual
+              </button>
             </div>
-            <div style={{ color: '#555', marginBottom: '6px' }}>
-              {Object.keys(conversionSchedule).length} year schedule (ages {Math.min(...Object.keys(conversionSchedule).map(Number))}–{Math.max(...Object.keys(conversionSchedule).map(Number))}). Sidebar settings below are overridden.
+
+            <div style={{ background: '#fff', border: '1px solid rgba(26,82,118,0.18)', borderRadius: '4px', overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ background: '#F4F8FB', color: '#666', borderBottom: '1px solid rgba(26,82,118,0.12)' }}>
+                    <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>Age</th>
+                    <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>Conversion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {conversionScheduleRows.map(({ age, amount }) => (
+                    <tr key={age} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '5px 8px', color: '#333' }}>{age}</td>
+                      <td style={{ padding: '5px 8px', textAlign: 'right', color: '#333', fontWeight: 600 }}>{formatDollars(amount)}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: '#F8FAFB' }}>
+                    <td style={{ padding: '6px 8px', color: '#333', fontWeight: 700 }}>Total</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: '#333', fontWeight: 700 }}>{formatDollars(conversionScheduleTotal)}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-            <button
-              onClick={onClearSchedule}
-              style={{ fontSize: '11px', padding: '2px 8px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
-            >
-              Reset to sidebar settings
-            </button>
           </div>
         ) : (
           <>
@@ -484,12 +462,12 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             </div>
           </>
         )}
-      </div>
+      </div>}
 
-      <hr className="divider" />
+      {showAll && <hr className="divider" />}
 
       {/* Tax */}
-      <div>
+      {(showAll || page === 'taxsettings') && <div>
         <div className="section-label">Tax settings</div>
         <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <input type="checkbox" checked={inputs.includeIRMAA}
@@ -566,7 +544,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
     </div>
   );

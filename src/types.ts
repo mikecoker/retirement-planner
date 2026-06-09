@@ -189,6 +189,21 @@ export interface ProjectionOptions {
   scenarioPath?: ScenarioYear[];
 }
 
+export type PlannerPage =
+  | 'about'
+  | 'social'
+  | 'conversions'
+  | 'taxsettings'
+  | 'accounts'
+  | 'expenses'
+  | 'balance'
+  | 'income'
+  | 'rmd'
+  | 'tax'
+  | 'cashflow'
+  | 'optimizer'
+  | 'mc';
+
 export interface TaxBreakdown {
   brackets: Array<{
     bracket: string;

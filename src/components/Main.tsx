@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import type { InputParams, ProjectionRow, Account } from '../types';
+import type { InputParams, ProjectionRow, Account, PlannerPage } from '../types';
 import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } from '../monteCarlo';
 import { ExpenseTab } from './ExpenseTab';
 import { AccountsTab } from './AccountsTab';
+import Sidebar from './Sidebar';
 import { Chart as ChartJS, type ChartData, type ChartOptions } from 'chart.js';
 import {
   CategoryScale,
@@ -25,8 +26,7 @@ ChartJS.register(
 
 interface MainProps {
   inputs: InputParams;
-  activeTab: 'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer' | 'expenses' | 'accounts';
-  setActiveTab: (tab: 'balance' | 'income' | 'rmd' | 'mc' | 'tax' | 'cashflow' | 'optimizer' | 'expenses' | 'accounts') => void;
+  activeTab: PlannerPage;
   rows: ProjectionRow[];
   metrics: { m1: string; m2: string; m3: string; m4: string; m5: string };
   optimization: import('../optimizer').OptimizationOutput | null;
@@ -84,7 +84,6 @@ type MonteCarloMethod = 'parametric' | 'historical';
 const Main: React.FC<MainProps> = ({
   inputs,
   activeTab,
-  setActiveTab,
   rows,
   metrics,
   optimization,
@@ -380,51 +379,6 @@ const Main: React.FC<MainProps> = ({
     );
   };
 
-  const accountsConfigured =
-    (inputs.accounts?.length ?? 0) > 0 ||
-    inputs.tradBal > 0 || inputs.rothBal > 0 || inputs.taxableBal > 0 || inputs.hsaBal > 0 ||
-    inputs.tradContrib > 0 || inputs.rothContrib > 0 || inputs.taxableContrib > 0 || inputs.hsaContrib > 0 ||
-    !!inputs.salary;
-
-  const expensesConfigured =
-    (inputs.expenseItems?.length ?? 0) > 0 ||
-    inputs.expenses > 0 || inputs.healthcareExpenses > 0 ||
-    inputs.discretionaryExpenses > 0 || inputs.ltcExpenses > 0;
-
-  type TabDef = { key: typeof activeTab; label: string; category: 'setup' | 'results' | 'tool'; configured?: boolean };
-  const tabs: TabDef[] = [
-    { key: 'accounts', label: 'Accounts', category: 'setup', configured: accountsConfigured },
-    { key: 'expenses', label: 'Expenses', category: 'setup', configured: expensesConfigured },
-    { key: 'balance', label: 'Balances', category: 'results' },
-    { key: 'income', label: 'Income', category: 'results' },
-    { key: 'rmd', label: 'RMDs & Conversions', category: 'results' },
-    { key: 'tax', label: 'Tax Analysis', category: 'results' },
-    { key: 'cashflow', label: 'Cash Flow', category: 'results' },
-    { key: 'optimizer', label: 'Roth Optimizer', category: 'tool' },
-    { key: 'mc', label: 'Monte Carlo', category: 'tool' },
-  ];
-
-  const tabStyle = (t: TabDef): React.CSSProperties => {
-    const isActive = activeTab === t.key;
-    if (t.category === 'setup') {
-      const configured = t.configured ?? false;
-      const fg = configured ? '#1A7A4A' : '#C0392B';
-      const bg = configured ? '#EAFAF1' : '#FDEDEC';
-      const border = configured ? 'rgba(26,122,74,0.5)' : 'rgba(192,57,43,0.5)';
-      return isActive
-        ? { background: bg, color: fg, borderColor: border }
-        : { color: fg, borderColor: border };
-    }
-    if (t.category === 'results') {
-      return isActive
-        ? { background: '#EBF5FB', color: '#1A5276', borderColor: 'rgba(36,113,163,0.5)' }
-        : {};
-    }
-    return isActive
-      ? { background: '#E8FAF8', color: '#0B6E5A', borderColor: 'rgba(11,110,90,0.5)' }
-      : {};
-  };
-
   return (
     <div className="main">
       <div className="metrics">
@@ -450,25 +404,17 @@ const Main: React.FC<MainProps> = ({
         </div>
       </div>
 
-      <div className="tabs">
-        {tabs.map((t, i) => {
-          const prevCat = i > 0 ? tabs[i - 1].category : null;
-          return (
-            <React.Fragment key={t.key}>
-              {prevCat && prevCat !== t.category && (
-                <div style={{ width: '2px', background: 'rgba(0,0,0,0.25)', margin: '2px 6px', alignSelf: 'stretch', borderRadius: '1px' }} />
-              )}
-              <button
-                className={`tab ${activeTab === t.key ? 'active' : ''}`}
-                style={tabStyle(t)}
-                onClick={() => setActiveTab(t.key)}
-              >
-                {t.label}
-              </button>
-            </React.Fragment>
-          );
-        })}
-      </div>
+      {(['about', 'social', 'conversions', 'taxsettings'] as const).includes(activeTab as any) && (
+        <div className="chart-card setup-card">
+          <Sidebar
+            inputs={inputs}
+            onInputChange={onInputChange}
+            conversionSchedule={conversionSchedule}
+            onClearSchedule={onClearSchedule}
+            page={activeTab as 'about' | 'social' | 'conversions' | 'taxsettings'}
+          />
+        </div>
+      )}
 
       {activeTab === 'balance' && (
         <div className="chart-card">
