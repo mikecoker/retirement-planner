@@ -1,12 +1,22 @@
 import type { InputParams, ProjectionRow } from './types';
 
-// IRS Uniform Lifetime Table (RMD divisors by age) — SECURE 2.0: RMDs start at 73
+// IRS Uniform Lifetime Table (RMD divisors by age, SECURE 2.0)
 const RMD_FACTORS: Record<number, number> = {
+  72: 27.4,
   73: 26.5, 74: 25.5, 75: 24.6, 76: 23.7, 77: 22.9, 78: 22.0, 79: 21.1,
   80: 20.2, 81: 19.4, 82: 18.5, 83: 17.7, 84: 16.8, 85: 16.0, 86: 15.2,
   87: 14.4, 88: 13.7, 89: 12.9, 90: 12.2, 91: 11.5, 92: 10.8, 93: 10.1,
   94: 9.5, 95: 8.9, 96: 8.4, 97: 7.8, 98: 7.3, 99: 6.8, 100: 6.4,
 };
+
+// RMD start age per SECURE Act rules based on birth year.
+// Note: born in 1949 is treated as 72 (second-half 1949 rule) — we lack birth-month precision.
+export function rmdStartAge(birthYear: number): number {
+  if (birthYear <= 1948) return 71; // pre-SECURE: 70½ rule (first RMD in year after turning 70½)
+  if (birthYear <= 1950) return 72; // SECURE 1.0
+  if (birthYear <= 1959) return 73; // SECURE 2.0
+  return 75;                        // SECURE 2.0 extended (born 1960+, takes effect 2033)
+}
 
 export function computeLoanPayoffMonths(balance: number, monthly: number, annualRate: number): number {
   if (monthly <= 0 || balance <= 0) return 0;
@@ -16,9 +26,9 @@ export function computeLoanPayoffMonths(balance: number, monthly: number, annual
   return Math.ceil(-Math.log(1 - (balance * r) / monthly) / Math.log(1 + r));
 }
 
-export function rmdFactor(age: number): number | null {
-  if (age < 73) return null;
-  return RMD_FACTORS[Math.min(age, 100)] || 6.4;
+export function rmdFactor(age: number, startAge: number): number | null {
+  if (age < startAge) return null;
+  return RMD_FACTORS[Math.min(age, 100)] ?? 6.4;
 }
 
 // Base year for bracket inflation extrapolation. Brackets scale with params.inf each year beyond this.
@@ -288,7 +298,8 @@ export function computeGuaranteedIncome(params: InputParams, age: number): numbe
     if (acct.type !== 'annuity' && acct.type !== 'pension' && acct.type !== 'bond_tips') continue;
     if (!acct.monthlyIncome) continue;
     const startAge = acct.incomeStartAge ?? params.retireAge;
-    const endAge = acct.incomeEndAge ?? params.lifeExp;
+    const projEnd = Math.max(params.lifeExp, (params.spouseLifeExp && params.spouseAge) ? params.age + (params.spouseLifeExp - params.spouseAge) : 0);
+    const endAge = acct.incomeEndAge ?? projEnd;
     if (age < startAge || age > endAge) continue;
     let annual = acct.monthlyIncome * 12;
     if (acct.inflationAdjusted) {
@@ -328,11 +339,16 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
   }
 
   const retireIn = Math.max(1, params.retireAge - params.age);
-  const totalYears = Math.max(
-    params.lifeExp - params.age,
-    // If spouse has longer life expectancy, extend projection to cover their lifetime too
-    (params.spouseLifeExp && params.spouseAge) ? params.spouseLifeExp - params.spouseAge : 0,
+  const birthYear = new Date().getFullYear() - params.age;
+  const rmdStart = rmdStartAge(birthYear);
+  // Effective last age of the projection — extends past primary's lifeExp when spouse outlives them
+  const projEndAge = Math.max(
+    params.lifeExp,
+    (params.spouseLifeExp && params.spouseAge)
+      ? params.age + (params.spouseLifeExp - params.spouseAge)
+      : 0,
   );
+  const totalYears = projEndAge - params.age;
   const rows: ProjectionRow[] = [];
 
   const targetConvBracket = params.targetConvBracket;
@@ -461,15 +477,43 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
       magi2YearsAgo = magi1YearAgo;
       magi1YearAgo = annualSalary + conv; // MAGI includes salary for IRMAA tracking
 
-      // One-time expenses during accumulation (paid from taxable)
-      if (params.expenseItems) {
+      // Record expenses for display (salary covers them — no account draws)
+      if (params.expenseItems && params.expenseItems.length > 0) {
+        const yearsOut = age - params.age;
         for (const item of params.expenseItems) {
-          if (item.isOneTime && item.atAge === age) {
-            const yearsOut = age - params.age;
-            const infl = Math.pow(1 + params.expenseInflationRate, yearsOut);
-            taxable = Math.max(0, taxable - Math.round(item.monthly * infl));
+          const itemStart = item.startAge ?? params.age;
+          let itemEnd = item.endAge ?? projEndAge;
+          if (item.isLoan && item.loanBalance && item.loanRate !== undefined && item.monthly > 0) {
+            const months = computeLoanPayoffMonths(item.loanBalance, item.monthly, item.loanRate);
+            if (isFinite(months)) itemEnd = Math.min(itemEnd, Math.floor(params.age + months / 12));
+          }
+          if (item.isOneTime) {
+            if (item.atAge === age) {
+              const infl = Math.pow(1 + params.expenseInflationRate, yearsOut);
+              const annual = Math.round(item.monthly * infl);
+              taxable = Math.max(0, taxable - annual);
+              yearExpense += annual;
+            }
+          } else {
+            if (age < itemStart || age > itemEnd) continue;
+            let infl = 1;
+            if (item.inflationType === 'general') infl = Math.pow(1 + params.expenseInflationRate, yearsOut);
+            else if (item.inflationType === 'healthcare') infl = Math.pow(1 + params.healthcareInflationRate, yearsOut);
+            else if (item.inflationType === 'cpi') infl = Math.pow(1 + params.inf, yearsOut);
+            const annual = item.monthly * 12 * infl;
+            if (item.category === 'healthcare') yearHcExpense += annual;
+            else if (item.category === 'discretionary') yearDiscExpense += annual;
+            else yearExpense += annual;
           }
         }
+        yearExpense = Math.round(yearExpense);
+        yearHcExpense = Math.round(yearHcExpense);
+        yearDiscExpense = Math.round(yearDiscExpense);
+      } else {
+        yearExpense = Math.round(baseExpense);
+        yearHcExpense = Math.round(baseHcExpense);
+        yearDiscExpense = Math.round(baseDiscExpense);
+        if (age >= 80) yearLtcExpense = Math.round(baseLtcExpense);
       }
     } else {
       // Distribution phase
@@ -478,7 +522,7 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
         for (const item of params.expenseItems) {
           if (item.isOneTime) continue;
           const itemStart = item.startAge ?? params.age;
-          let itemEnd = item.endAge ?? params.lifeExp;
+          let itemEnd = item.endAge ?? projEndAge;
           if (item.isLoan && item.loanBalance && item.loanRate !== undefined && item.monthly > 0) {
             const months = computeLoanPayoffMonths(item.loanBalance, item.monthly, item.loanRate);
             if (isFinite(months)) itemEnd = Math.min(itemEnd, Math.floor(params.age + months / 12));
@@ -519,7 +563,7 @@ export function runProjection(params: InputParams, r: number, conversionSchedule
       pensionInc = computeGuaranteedIncome(params, age);
 
       // Step 1: Calculate RMD (mandatory)
-      const factor = rmdFactor(age);
+      const factor = rmdFactor(age, rmdStart);
       if (factor !== null && trad > 0) {
         rmd = Math.round(trad / factor);
       }

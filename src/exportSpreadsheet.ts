@@ -13,6 +13,7 @@ function inputsSheet(inputs: InputParams): XLSX.WorkSheet {
     ['Retirement age', inputs.retireAge],
     ['Life expectancy', inputs.lifeExp],
     ['Filing status', inputs.filingStatus],
+    ['Annual salary / wages ($)', inputs.salary ?? ''],
     [],
     ['── Spouse ──', ''],
     ['Spouse age', inputs.spouseAge ?? ''],
@@ -27,6 +28,7 @@ function inputsSheet(inputs: InputParams): XLSX.WorkSheet {
     ['Traditional IRA/401k balance ($)', inputs.tradBal],
     ['Roth IRA balance ($)', inputs.rothBal],
     ['Taxable account balance ($)', inputs.taxableBal],
+    ['Taxable cost basis ($)', inputs.taxableBasis ?? ''],
     ['HSA balance ($)', inputs.hsaBal],
     ['Traditional contribution ($/mo)', inputs.tradContrib],
     ['Roth contribution ($/mo)', inputs.rothContrib],
@@ -53,6 +55,7 @@ function inputsSheet(inputs: InputParams): XLSX.WorkSheet {
     [],
     ['── Roth Conversions ──', ''],
     ['Max annual conversion ($)', inputs.rothConv],
+    ['Convert start age', inputs.convStart],
     ['Convert until age', inputs.convUntil],
     ['Target bracket', ['10%','12%','22%','24%'][inputs.targetConvBracket]],
     [],
@@ -80,36 +83,46 @@ function balancesSheet(rows: ProjectionRow[]): XLSX.WorkSheet {
   return ws;
 }
 
-function incomeSheet(rows: ProjectionRow[]): XLSX.WorkSheet {
+function incomeSheet(rows: ProjectionRow[], inputs: InputParams): XLSX.WorkSheet {
   const header = [
     'Age',
+    'Salary ($)',
     'SS – You ($)',
     'SS – Spouse ($)',
+    'Pension ($)',
+    'RMD ($)',
+    'Roth Conversion ($)',
     'Trad Withdrawal ($)',
     'Roth Withdrawal ($)',
     'Taxable Withdrawal ($)',
     'HSA Withdrawal ($)',
-    'Roth Conversion ($)',
-    'Pension ($)',
     'Total Income ($)',
-    'Total Tax ($)',
+    'Spending ($)',
+    'Taxes ($)',
+    'Net ($)',
     'Net Spendable ($)',
   ];
   const data = rows.map(r => {
-    const totalIn = r.tradW + r.rothW + r.taxableW + r.hsaW + r.ss + r.spouseSs + r.pension;
-    const netSpendable = totalIn - r.conv - r.totalSpending - r.totalTax;
+    const salary = r.age < inputs.retireAge ? (inputs.salary ?? 0) : 0;
+    const totalIn = salary + r.ss + r.spouseSs + r.pension + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW;
+    const net = totalIn - r.totalSpending - r.totalTax;
+    const netSpendable = totalIn - r.conv - r.totalSpending - (r.totalTax - r.convTax);
     return [
       r.age,
+      dollar(salary),
       dollar(r.ss),
       dollar(r.spouseSs),
+      dollar(r.pension),
+      dollar(r.rmd),
+      dollar(r.conv),
       dollar(r.tradW),
       dollar(r.rothW),
       dollar(r.taxableW),
       dollar(r.hsaW),
-      dollar(r.conv),
-      dollar(r.pension),
       dollar(totalIn),
+      dollar(r.totalSpending),
       dollar(r.totalTax),
+      dollar(net),
       dollar(netSpendable),
     ];
   });
@@ -210,13 +223,14 @@ function spendingSheet(rows: ProjectionRow[]): XLSX.WorkSheet {
   return ws;
 }
 
-export function exportToSpreadsheet(inputs: InputParams, rows: ProjectionRow[]): void {
+export function exportToSpreadsheet(inputs: InputParams, allRows: ProjectionRow[]): void {
+  const dataRows = allRows.slice(1); // skip y=0 initial state, match UI behaviour
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, inputsSheet(inputs), 'Inputs');
-  XLSX.utils.book_append_sheet(wb, balancesSheet(rows), 'Balances');
-  XLSX.utils.book_append_sheet(wb, incomeSheet(rows), 'Income');
-  XLSX.utils.book_append_sheet(wb, rmdsSheet(rows), 'RMDs & Conversions');
-  XLSX.utils.book_append_sheet(wb, taxSheet(rows), 'Tax');
-  XLSX.utils.book_append_sheet(wb, spendingSheet(rows), 'Spending');
+  XLSX.utils.book_append_sheet(wb, balancesSheet(allRows), 'Balances'); // keep initial state for balances
+  XLSX.utils.book_append_sheet(wb, incomeSheet(dataRows, inputs), 'Income');
+  XLSX.utils.book_append_sheet(wb, rmdsSheet(dataRows), 'RMDs & Conversions');
+  XLSX.utils.book_append_sheet(wb, taxSheet(dataRows), 'Tax');
+  XLSX.utils.book_append_sheet(wb, spendingSheet(dataRows), 'Spending');
   XLSX.writeFile(wb, 'retirement-plan.xlsx');
 }

@@ -3,7 +3,7 @@ import React, { useState, useRef, useCallback } from 'react';
 const DEFINITIONS: Record<string, string> = {
   'Current age': 'Your age today. This sets the starting point for the year-by-year projection.',
   'Retirement age': 'The age when you stop working and begin drawing from your retirement accounts. Also when contributions end.',
-  'Life expectancy': 'The age the projection runs until. If your portfolio reaches zero before this age, you have a funding gap.',
+  'Life expectancy': 'The age the projection runs until for you. If a spouse is set with a longer remaining life expectancy, the projection extends to cover their lifetime too — those rows are marked "SPOUSE" in the tables.',
   'Filing status': 'Your IRS tax filing status. This determines your tax brackets, standard deduction, and Social Security taxation thresholds.',
   'Spouse age': 'Your spouse\'s current age, used to model spousal Social Security benefits and joint tax calculations.',
   'Spouse life expectancy': 'Your spouse\'s expected age at death. The projection runs until the later of your two life expectancies to ensure the portfolio covers both lifetimes.',
@@ -26,7 +26,7 @@ const DEFINITIONS: Record<string, string> = {
   'Expense inflation (%)': 'The annual rate at which your base expenses grow. General inflation (~3%) is the baseline, but you may want a higher rate if your lifestyle costs more over time.',
   'Healthcare inflation (%)': 'The annual rate at which healthcare costs grow. Historically ~5-6%, well above general inflation. This affects Medicare premiums, drug costs, and long-term care.',
   'Max annual conversion ($)': 'The maximum amount you\'d convert from traditional to Roth each year. The actual conversion may be less — the engine stops at your target bracket ceiling to avoid higher tax rates.',
-  'Convert until age': 'Stop doing Roth conversions at this age. Converting after RMDs start (age 73) is less impactful since RMDs already push income up.',
+  'Convert until age': 'Stop doing Roth conversions at this age. Converting after RMDs begin is less impactful since RMDs already push income up. RMD start age depends on your birth year: 72 (born 1949–1950), 73 (born 1951–1959), or 75 (born 1960+).',
   'Target conversion bracket': 'The highest tax bracket you\'re willing to fill with Roth conversions. The engine converts up to the ceiling of this bracket, then stops. 12% is common for early retirees; 22% if you want aggressive conversion.',
   'Include IRMAA surcharges': 'IRMAA = Income-Related Monthly Adjustment Amount. High-income retirees pay extra for Medicare Part B and Part D. Based on your MAGI from 2 years prior. Thresholds: $103K single / $206K married.',
   'Include state tax': 'Add a flat state income tax rate to the federal tax calculation. State taxes vary widely (0% in FL/TX to ~13% in CA).',

@@ -58,6 +58,21 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
   const allRows = rows.slice(1); // all years from current age onward (skip y=0 initial state)
   const getSalary = (r: ProjectionRow) => r.age < inputs.retireAge ? (inputs.salary ?? 0) : 0;
 
+  // Rows past the primary's life expectancy are spouse-only survivor years
+  const survivorRowStyle = (r: ProjectionRow, base?: React.CSSProperties): React.CSSProperties => {
+    if (r.age <= inputs.lifeExp) return base ?? {};
+    return {
+      ...(base ?? {}),
+      background: '#F5F5F5',
+      color: '#999',
+      ...(r.age === inputs.lifeExp + 1 ? { borderTop: '2px dashed #ccc' } : {}),
+    };
+  };
+  const SurvivorTag = ({ age }: { age: number }) =>
+    age === inputs.lifeExp + 1 && inputs.spouseAge !== undefined
+      ? <span style={{ marginLeft: 5, fontSize: 9, color: '#aaa', fontWeight: 600 }}>SPOUSE</span>
+      : null;
+
   // ----- Balance Chart -----
   const balanceData = (): ChartData<'line', number[], string> => ({
     labels: rows.map(r => String(r.age)),
@@ -262,8 +277,8 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                   </thead>
                   <tbody>
                     {convRows.map(r => (
-                      <tr key={r.age} style={r.tradW > 0 ? { background: '#FFF5F5' } : undefined}>
-                        <td>{r.age}</td>
+                      <tr key={r.age} style={survivorRowStyle(r, r.tradW > 0 ? { background: '#FFF5F5' } : undefined)}>
+                        <td>{r.age}<SurvivorTag age={r.age} /></td>
                         <td>{fmt(r.conv)}</td>
                         <td>{fmt(r.convTax)}</td>
                         <td>{fmt(r.totalTax)}</td>
@@ -427,10 +442,11 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                   const prev = rows[i - 1];
                   const change = prev ? r.total - prev.total : null;
                   return (
-                    <tr key={r.age} style={r.age === inputs.retireAge ? { borderTop: '2px solid #378ADD' } : undefined}>
+                    <tr key={r.age} style={survivorRowStyle(r, r.age === inputs.retireAge ? { borderTop: '2px solid #378ADD' } : undefined)}>
                       <td>
                         {r.age}
                         {r.age === inputs.retireAge && <span style={{ marginLeft: 6, fontSize: 10, color: '#378ADD', fontWeight: 600 }}>RETIRE</span>}
+                        <SurvivorTag age={r.age} />
                       </td>
                       <td>{fmt(r.trad)}</td>
                       <td>{fmt(r.roth)}</td>
@@ -500,8 +516,8 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                   const net = totalIn - r.totalSpending - r.totalTax;
                   const netSpendable = totalIn - r.conv - r.totalSpending - (r.totalTax - r.convTax);
                   return (
-                    <tr key={r.age} style={netSpendable < -2000 ? { background: '#FFF5F5' } : undefined}>
-                      <td>{r.age}</td>
+                    <tr key={r.age} style={survivorRowStyle(r, netSpendable < -2000 ? { background: '#FFF5F5' } : undefined)}>
+                      <td>{r.age}<SurvivorTag age={r.age} /></td>
                       <td>{salary > 0 ? fmt(salary) : '—'}</td>
                       <td>{r.ss + r.spouseSs > 0 ? fmt(r.ss + r.spouseSs) : '—'}</td>
                       <td>{r.pension > 0 ? fmt(r.pension) : '—'}</td>
@@ -627,8 +643,8 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
               </thead>
               <tbody>
                 {allRows.map(r => (
-                  <tr key={r.age}>
-                    <td>{r.age}</td>
+                  <tr key={r.age} style={survivorRowStyle(r)}>
+                    <td>{r.age}<SurvivorTag age={r.age} /></td>
                     <td>{fmt(r.ordinaryIncome)}</td>
                     <td>{fmt(r.standardDeduction)}</td>
                     <td>{fmt(r.taxableIncome)}</td>
@@ -721,8 +737,8 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                   const net = totalIn - totalOut;
                   const depleted = r.total <= 0;
                   return (
-                    <tr key={r.age} style={depleted ? { background: '#FFF5F5' } : undefined}>
-                      <td>{r.age}</td>
+                    <tr key={r.age} style={survivorRowStyle(r, depleted ? { background: '#FFF5F5' } : undefined)}>
+                      <td>{r.age}<SurvivorTag age={r.age} /></td>
                       <td>{fmt(totalIn)}</td>
                       <td>{fmt(r.totalSpending)}</td>
                       <td>{fmt(r.totalTax)}</td>
@@ -913,11 +929,18 @@ const Main: React.FC<MainProps> = ({ inputs, activeTab, setActiveTab, rows, metr
                   const metricLabel = (m: import('../optimizer').StartAgeMetric) =>
                     `${BRACKET_LABELS[m.bracket]} / until ${m.untilAge}`;
                   const visibleRows = optimization.startAgeAnalysis.filter(r => r.convStart >= optMinStartAge);
-                  const bestRowForGoal = visibleRows.length === 0 ? null : visibleRows.reduce((best, r) => {
+                  // Only rows that would show a real value (not "—") are eligible for BEST
+                  const eligibleForGoal = visibleRows.filter(r => {
+                    const preRet = r.convStart < inputs.retireAge;
+                    if (optimizerGoal === 'portfolio') return !preRet || r.bestTerminal.hasPreRetirementConv;
+                    if (optimizerGoal === 'peakrate') return !preRet || r.bestPeak.hasPreRetirementConv;
+                    return !preRet || r.bestTax.hasPreRetirementConv;
+                  });
+                  const bestRowForGoal = eligibleForGoal.length === 0 ? null : eligibleForGoal.reduce((best, r) => {
                     if (optimizerGoal === 'portfolio') return r.bestTerminal.terminalTotal > best.bestTerminal.terminalTotal ? r : best;
                     if (optimizerGoal === 'peakrate') return r.bestPeak.peakMarginalRate < best.bestPeak.peakMarginalRate ? r : best;
                     return r.bestTax.lifetimeTotalTax < best.bestTax.lifetimeTotalTax ? r : best;
-                  }, visibleRows[0]);
+                  }, eligibleForGoal[0]);
 
                   const goalSchedule = (row: typeof visibleRows[0]) =>
                     optimizerGoal === 'portfolio' ? row.bestTerminal.schedule

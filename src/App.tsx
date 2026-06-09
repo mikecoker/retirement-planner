@@ -128,7 +128,14 @@ function savePlans(plans: StoredPlan[], activePlanId: string): void {
 }
 
 function exportPlanToFile(plan: StoredPlan): void {
-  const data = JSON.stringify(plan.inputs, null, 2);
+  const payload = {
+    version: 2,
+    name: plan.name,
+    inputs: plan.inputs,
+    conversionSchedule: plan.conversionSchedule ?? null,
+    optMinStartAge: plan.optMinStartAge,
+  };
+  const data = JSON.stringify(payload, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -138,12 +145,23 @@ function exportPlanToFile(plan: StoredPlan): void {
   URL.revokeObjectURL(url);
 }
 
-function importPlanFromFile(file: File): Promise<InputParams> {
+function importPlanFromFile(file: File): Promise<{ inputs: InputParams; conversionSchedule: Record<number, number> | null; optMinStartAge?: number }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        resolve({ ...DEFAULTS, ...JSON.parse(e.target?.result as string) });
+        const parsed = JSON.parse(e.target?.result as string);
+        // v2 format: { version, name, inputs, conversionSchedule, optMinStartAge }
+        if (parsed.version === 2 && parsed.inputs) {
+          resolve({
+            inputs: { ...DEFAULTS, ...parsed.inputs },
+            conversionSchedule: parsed.conversionSchedule ?? null,
+            optMinStartAge: parsed.optMinStartAge,
+          });
+        } else {
+          // Legacy format: bare InputParams object
+          resolve({ inputs: { ...DEFAULTS, ...parsed }, conversionSchedule: null });
+        }
       } catch {
         reject(new Error('Invalid JSON file'));
       }
@@ -302,9 +320,13 @@ const App: React.FC = () => {
   const handleExportSpreadsheet = () => exportToSpreadsheet(inputs, rows);
   const handleImport = async (file: File) => {
     try {
-      const imported = await importPlanFromFile(file);
+      const { inputs: imported, conversionSchedule: importedSchedule, optMinStartAge: importedOptAge } = await importPlanFromFile(file);
       const name = file.name.replace(/\.json$/i, '').replace(/[-_]/g, ' ');
-      const plan = createPlan(name || 'Imported Plan', imported);
+      const plan: StoredPlan = {
+        ...createPlan(name || 'Imported Plan', imported),
+        conversionSchedule: importedSchedule,
+        optMinStartAge: importedOptAge,
+      };
       setPlans(prev => [...prev, plan]);
       setActivePlanId(plan.id);
     } catch {

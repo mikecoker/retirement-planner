@@ -88,10 +88,11 @@ describe('runProjection', () => {
     expect(postSS[0].ss).toBeGreaterThan(0);
   });
 
-  it('RMDs start at age 73 and are zero before', () => {
+  it('RMDs start at the correct age based on birth year and are zero before', () => {
+    // BASE age=55 in 2026 → birth year 1971 → RMD start age 75 (born 1960+)
     const rows = runProjection(BASE, BASE.r);
-    const preRMD = rows.filter(r => r.age < 73);
-    const atRMD = rows.find(r => r.age === 73);
+    const preRMD = rows.filter(r => r.age < 75);
+    const atRMD = rows.find(r => r.age === 75);
     for (const r of preRMD) expect(r.rmd).toBe(0);
     if (atRMD) expect(atRMD.rmd).toBeGreaterThan(0);
   });
