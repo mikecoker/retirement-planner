@@ -289,7 +289,7 @@ function ssEarlyReduction(monthsBeforeFRA: number): number {
   return first + extra;
 }
 
-function ssClaimFactor(age: number, fraAge: number): number {
+export function ssClaimFactor(age: number, fraAge: number): number {
   const monthsFromFra = Math.round((age - fraAge) * 12);
   if (monthsFromFra < 0) return 1 - ssEarlyReduction(Math.abs(monthsFromFra));
   return 1 + 0.08 * (monthsFromFra / 12);
@@ -329,18 +329,58 @@ export function ssAt(params: InputParams, age: number): number {
 }
 
 function spousalMonthly(params: InputParams, claimAge: number): number {
-  const primaryFra = fullRetirementAge(inferredBirthYear(params));
   const spouseFra = fullRetirementAge(inferredSpouseBirthYear(params) ?? inferredBirthYear(params));
-  const primaryPIA = params.ss67
+  const fraMonthly = primaryPia(params) * 0.5;
+  // Spousal early reduction: 25/36%/mo for first 36 months, 5/12%/mo beyond; no delayed credits past FRA
+  const effectiveAge = Math.min(claimAge, spouseFra);
+  return fraMonthly * spousalReductionFactor(spouseFra, effectiveAge);
+}
+
+function primaryPia(params: InputParams): number {
+  const primaryFra = fullRetirementAge(inferredBirthYear(params));
+  return params.ss67
     ? params.ss67 / ssClaimFactor(67, primaryFra)
     : params.ss / ssClaimFactor(params.ssAge, primaryFra);
-  const fraMonthly = primaryPIA * 0.5;
-  // Spousal early reduction: 25/36%/mo for first 36 months, 5/12%/mo beyond; no delayed credits past FRA
+}
+
+function spousalReductionFactor(spouseFra: number, claimAge: number): number {
   const effectiveAge = Math.min(claimAge, spouseFra);
   const monthsBefore = Math.max(0, Math.round((spouseFra - effectiveAge) * 12));
   const first36 = Math.min(monthsBefore, 36) * (25 / 36) / 100;
   const extra = Math.max(0, monthsBefore - 36) * (5 / 12) / 100;
-  return fraMonthly * (1 - first36 - extra);
+  return 1 - first36 - extra;
+}
+
+function spouseOwnMonthly(params: InputParams, claimAge: number): number | null {
+  if (params.spouseSs62 && params.spouseSs67 && params.spouseSs70) {
+    const spouseBirthYear = inferredSpouseBirthYear(params);
+    return ssInterpolate(
+      params.spouseSs62,
+      params.spouseSs67,
+      params.spouseSs70,
+      claimAge,
+      spouseBirthYear !== undefined ? fullRetirementAge(spouseBirthYear) : 67,
+    );
+  }
+  return params.spouseSs ?? null;
+}
+
+function spouseOwnPia(params: InputParams, claimAge: number, ownMonthly: number): number {
+  const spouseBirthYear = inferredSpouseBirthYear(params);
+  const spouseFra = spouseBirthYear !== undefined ? fullRetirementAge(spouseBirthYear) : 67;
+  return params.spouseSs67
+    ? params.spouseSs67 / ssClaimFactor(67, spouseFra)
+    : ownMonthly / ssClaimFactor(claimAge, spouseFra);
+}
+
+function spouseAgeAtPrimaryFiling(params: InputParams): number {
+  return (params.spouseAge ?? params.ssAge) + (params.ssAge - params.age);
+}
+
+function spousalExcessMonthly(params: InputParams, startAge: number, spouseOwnPiaAmount: number): number {
+  const spouseFra = fullRetirementAge(inferredSpouseBirthYear(params) ?? inferredBirthYear(params));
+  const excessAtFra = Math.max(0, primaryPia(params) * 0.5 - spouseOwnPiaAmount);
+  return excessAtFra * spousalReductionFactor(spouseFra, startAge);
 }
 
 export function spouseSsAt(params: InputParams, age: number): number {
@@ -353,39 +393,31 @@ export function spouseSsAt(params: InputParams, age: number): number {
   const ssType = params.spouseSsType ?? 'own';
   // Spousal/combined top-up requires primary to have filed first
   const primaryHasFiled = age >= params.ssAge;
+  const primaryFilingSpouseAge = spouseAgeAtPrimaryFiling(params);
 
   if (ssType === 'spousal') {
-    const effectiveClaimAge = Math.min(claimAge, 67);
-    if (spouseAgeThisYear < effectiveClaimAge || !primaryHasFiled) return 0;
-    const monthly = spousalMonthly(params, claimAge);
-    return monthly * benefitFactor * 12 * Math.pow(1 + params.ssCOLA, spouseAgeThisYear - effectiveClaimAge);
+    const startAge = Math.max(claimAge, primaryFilingSpouseAge);
+    if (spouseAgeThisYear < startAge || !primaryHasFiled) return 0;
+    const monthly = spousalMonthly(params, startAge);
+    return monthly * benefitFactor * 12 * Math.pow(1 + params.ssCOLA, spouseAgeThisYear - startAge);
   }
 
   // 'own' or 'combined' — own benefit starts at her claim age, no dependency on primary
   if (spouseAgeThisYear < claimAge) return 0;
 
-  let ownMonthly: number;
-  if (params.spouseSs62 && params.spouseSs67 && params.spouseSs70) {
-    const spouseBirthYear = inferredSpouseBirthYear(params);
-    ownMonthly = ssInterpolate(
-      params.spouseSs62,
-      params.spouseSs67,
-      params.spouseSs70,
-      claimAge,
-      spouseBirthYear !== undefined ? fullRetirementAge(spouseBirthYear) : 67,
-    );
-  } else if (params.spouseSs) {
-    ownMonthly = params.spouseSs;
-  } else {
-    return 0;
-  }
+  const ownMonthly = spouseOwnMonthly(params, claimAge);
+  if (ownMonthly === null) return 0;
 
-  // 'combined': once primary files, SSA pays max(own, spousal). Before that, own only.
-  const monthly = (ssType === 'combined' && primaryHasFiled)
-    ? Math.max(ownMonthly, spousalMonthly(params, claimAge))
-    : ownMonthly;
+  const ownAnnual = ownMonthly * benefitFactor * 12 * Math.pow(1 + params.ssCOLA, spouseAgeThisYear - claimAge);
+  if (ssType !== 'combined' || !primaryHasFiled) return ownAnnual;
 
-  return monthly * benefitFactor * 12 * Math.pow(1 + params.ssCOLA, spouseAgeThisYear - claimAge);
+  const topUpStartAge = Math.max(claimAge, primaryFilingSpouseAge);
+  if (spouseAgeThisYear < topUpStartAge) return ownAnnual;
+
+  const ownPia = spouseOwnPia(params, claimAge, ownMonthly);
+  const topUpMonthly = spousalExcessMonthly(params, topUpStartAge, ownPia);
+  const topUpAnnual = topUpMonthly * benefitFactor * 12 * Math.pow(1 + params.ssCOLA, spouseAgeThisYear - topUpStartAge);
+  return ownAnnual + topUpAnnual;
 }
 
 export function computeGuaranteedIncome(params: InputParams, age: number): number {
