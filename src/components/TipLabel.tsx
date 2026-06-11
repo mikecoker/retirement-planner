@@ -42,6 +42,7 @@ const DEFINITIONS: Record<string, string> = {
   'ACA premium ($/mo)': 'Gross monthly ACA marketplace premium per covered person before any premium tax credit.',
   'ACA credit ($/mo)': 'Monthly ACA premium tax credit per covered person. The model subtracts this from the gross premium.',
   'Include state tax': 'Add a flat state income tax rate to the federal tax calculation. State taxes vary widely (0% in FL/TX to ~13% in CA).',
+  'State tax preset': 'Choose a state estimate or Custom. Presets are rough estimates from published rates and may omit deductions, credits, retirement-income exclusions, local taxes, and future law changes.',
   'State tax rate (%)': 'Your state\'s effective income tax rate. Use your state\'s top marginal rate or an effective rate based on your income. 0% for states with no income tax.',
   'State tax brackets JSON': 'Optional progressive state tax table as JSON: [[ceiling, rate], ...]. Use null as the final ceiling. If provided, this overrides the flat state tax rate.',
   'Annual QCD ($)': 'Qualified Charitable Distribution amount sent directly from a traditional IRA to charity each year. It can satisfy RMDs while excluding that amount from taxable income.',

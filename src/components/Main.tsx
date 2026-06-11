@@ -6,6 +6,7 @@ import { ExpenseTab } from './ExpenseTab';
 import { AccountsTab } from './AccountsTab';
 import Sidebar from './Sidebar';
 import TipLabel from './TipLabel';
+import { CUSTOM_STATE_TAX_PRESET, getStateTaxPreset, STATE_TAX_PRESETS } from '../stateTaxPresets';
 import { Chart as ChartJS, type ChartData, type ChartOptions } from 'chart.js';
 import {
   CategoryScale,
@@ -212,6 +213,7 @@ const Main: React.FC<MainProps> = ({
     : 0;
   const spouseSsMonthly = Math.round(spouseSsAnnualAtClaim / 12);
   const totalSsMonthly = primarySsMonthly + spouseSsMonthly;
+  const selectedStateTaxPreset = getStateTaxPreset(inputs.stateTaxPreset);
   const displayAtAge = (value: number, age: number): number =>
     dollarMode === 'today'
       ? value / Math.pow(1 + inputs.inf, Math.max(0, age - inputs.age))
@@ -1112,28 +1114,49 @@ const Main: React.FC<MainProps> = ({
               {inputs.includeStateTax && (
                 <>
                   <div className="field">
-                    <TipLabel text="State tax rate (%)" />
-                    <div className="range-row">
-                      <input
-                        type="range"
-                        min={0}
-                        max={13}
-                        value={inputs.stateTaxRate * 100}
-                        step={0.25}
-                        onInput={(e) => handleTaxRateChange('stateTaxRate', e)}
-                      />
-                      <span className="range-val">{(inputs.stateTaxRate * 100).toFixed(2)}%</span>
+                    <TipLabel text="State tax preset" />
+                    <select
+                      value={inputs.stateTaxPreset ?? CUSTOM_STATE_TAX_PRESET}
+                      onChange={(e) => onInputChange('stateTaxPreset', e.target.value)}
+                    >
+                      <option value={CUSTOM_STATE_TAX_PRESET}>Custom rate / brackets</option>
+                      {STATE_TAX_PRESETS.map(p => (
+                        <option key={p.code} value={p.code}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {selectedStateTaxPreset && (
+                    <div className="note">
+                      <strong>{selectedStateTaxPreset.name}</strong> preset: {selectedStateTaxPreset.confidence} estimate, tax year {selectedStateTaxPreset.taxYear}, rates pulled {selectedStateTaxPreset.ratesAsOf}. {selectedStateTaxPreset.notes}
                     </div>
-                  </div>
-                  <div className="field">
-                    <TipLabel text="State tax brackets JSON" />
-                    <textarea
-                      value={inputs.stateTaxBrackets ?? ''}
-                      placeholder="[[10000,0.01],[50000,0.03],[null,0.05]]"
-                      style={{ width: '100%', minHeight: 54, fontSize: 11, fontFamily: 'monospace', padding: '4px 6px', border: '1px solid #ccc', borderRadius: 6 }}
-                      onInput={(e) => onInputChange('stateTaxBrackets', (e.target as HTMLTextAreaElement).value || undefined as any)}
-                    />
-                  </div>
+                  )}
+                  {!selectedStateTaxPreset && (
+                    <>
+                      <div className="field">
+                        <TipLabel text="State tax rate (%)" />
+                        <div className="range-row">
+                          <input
+                            type="range"
+                            min={0}
+                            max={13}
+                            value={inputs.stateTaxRate * 100}
+                            step={0.25}
+                            onInput={(e) => handleTaxRateChange('stateTaxRate', e)}
+                          />
+                          <span className="range-val">{(inputs.stateTaxRate * 100).toFixed(2)}%</span>
+                        </div>
+                      </div>
+                      <div className="field">
+                        <TipLabel text="State tax brackets JSON" />
+                        <textarea
+                          value={inputs.stateTaxBrackets ?? ''}
+                          placeholder="[[10000,0.01],[50000,0.03],[null,0.05]]"
+                          style={{ width: '100%', minHeight: 54, fontSize: 11, fontFamily: 'monospace', padding: '4px 6px', border: '1px solid #ccc', borderRadius: 6 }}
+                          onInput={(e) => onInputChange('stateTaxBrackets', (e.target as HTMLTextAreaElement).value || undefined as any)}
+                        />
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>

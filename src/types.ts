@@ -74,6 +74,7 @@ export interface InputParams {
   inf: number;
 
   // Tax
+  stateTaxPreset?: string;
   stateTaxRate: number;
   stateTaxBrackets?: string; // JSON string
 
