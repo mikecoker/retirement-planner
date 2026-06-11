@@ -711,6 +711,41 @@ describe('runProjection', () => {
     expect(late.healthcareExpenses).toBe(2400);
   });
 
+  it('adds one-time expenses on top of basic monthly spending', () => {
+    const withOneTime = {
+      ...BASE,
+      age: 65,
+      retireAge: 65,
+      lifeExp: 67,
+      tradBal: 0,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      ss: 0,
+      expenses: 1000,
+      healthcareExpenses: 200,
+      discretionaryExpenses: 300,
+      ltcExpenses: 0,
+      expenseInflationRate: 0,
+      healthcareInflationRate: 0,
+      inf: 0,
+      expenseItems: [
+        { id: 'wedding', name: 'Wedding', category: 'other' as const, monthly: 25000, inflationType: 'general' as const, isOneTime: true, atAge: 66 },
+      ],
+    };
+    const rows = runProjection(withOneTime, 0);
+
+    const eventYear = rows.find(r => r.age === 66)!;
+    expect(eventYear.expenses).toBe(37000);
+    expect(eventYear.healthcareExpenses).toBe(2400);
+    expect(eventYear.discretionaryExpenses).toBe(3600);
+
+    const regularYear = rows.find(r => r.age === 67)!;
+    expect(regularYear.expenses).toBe(12000);
+    expect(regularYear.healthcareExpenses).toBe(2400);
+    expect(regularYear.discretionaryExpenses).toBe(3600);
+  });
+
   it('does not apply basic spending smile adjustments to advanced expense items', () => {
     const advanced = {
       ...BASE,
