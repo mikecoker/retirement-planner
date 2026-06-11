@@ -16,6 +16,9 @@ These JSON files can be imported through the app's **Import** button. They are s
 - `married-spousal-benefit-basic.json`  
   Married household using the spousal-only Social Security option, basic account balances, and basic expenses.
 
+- `married-spousal-top-up-example.json`  
+  Married household using the combined Social Security option where the spouse starts with their own benefit at 62 and receives an excess spousal top-up after the primary files at 67. COLA is set to 0% so the top-up behavior is easy to inspect.
+
 - `married-manual-spouse-benefit.json`  
   Married household using the spouse manual monthly benefit fallback instead of spouse SSA 62/67/70 estimates.
 
