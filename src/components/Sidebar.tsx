@@ -1,6 +1,6 @@
 import React from 'react';
 import type { InputParams } from '../types';
-import { fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, ssInterpolate } from '../financial';
+import { fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, ssClaimFactor, ssInterpolate } from '../financial';
 import TipLabel from './TipLabel';
 
 interface SidebarProps {
@@ -307,13 +307,23 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
               const hasSpouseEstimates = !!(inputs.spouseSs62 && inputs.spouseSs67 && inputs.spouseSs70);
               const primaryFra = fullRetirementAge(inferredBirthYear(inputs));
               const spouseFra = fullRetirementAge(inferredSpouseBirthYear(inputs) ?? inferredBirthYear(inputs));
-              const primaryPIA = inputs.ss67 ? inputs.ss67 / (primaryFra <= 67 ? 1 + 0.08 * (67 - primaryFra) : 1) : inputs.ss;
-              const spousalAt = (a: number) => {
+              const primaryPIA = inputs.ss67
+                ? inputs.ss67 / ssClaimFactor(67, primaryFra)
+                : inputs.ss / ssClaimFactor(inputs.ssAge, primaryFra);
+              const spouseAgeAtPrimaryFiling = inputs.spouseAge !== undefined
+                ? inputs.spouseAge + (inputs.ssAge - inputs.age)
+                : claimAge;
+              const spousalReductionAt = (a: number) => {
                 const effAge = Math.min(a, spouseFra);
                 const mo = Math.max(0, Math.round((spouseFra - effAge) * 12));
                 const f = Math.min(mo, 36) * (25 / 36) / 100;
                 const x = Math.max(0, mo - 36) * (5 / 12) / 100;
-                return Math.round(primaryPIA * 0.5 * (1 - f - x));
+                return 1 - f - x;
+              };
+              const spousalAt = (a: number) => Math.round(primaryPIA * 0.5 * spousalReductionAt(a));
+              const spouseOwnPiaAt = (ownBenefit: number) => {
+                if (inputs.spouseSs67) return inputs.spouseSs67 / ssClaimFactor(67, spouseFra);
+                return ownBenefit / ssClaimFactor(claimAge, spouseFra);
               };
 
               return (
@@ -368,20 +378,20 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                   </div>
 
                   {showSpousal && primaryPIA > 0 && (() => {
-                    const effClaimAge = Math.min(claimAge, 67);
+                    const startAge = Math.max(claimAge, spouseAgeAtPrimaryFiling);
                     const fraMonthly = Math.round(primaryPIA * 0.5);
-                    const monthly = spousalAt(effClaimAge);
-                    const monthsBefore = Math.max(0, Math.round((spouseFra - effClaimAge) * 12));
-                    const f = Math.min(monthsBefore, 36) * (25 / 36) / 100;
-                    const x = Math.max(0, monthsBefore - 36) * (5 / 12) / 100;
-                    const reductionPct = ((f + x) * 100).toFixed(1);
+                    const monthly = spousalAt(startAge);
+                    const reductionPct = ((1 - spousalReductionAt(startAge)) * 100).toFixed(1);
                     return (
                       <div className="field">
                         <div style={{ fontSize: '11px', color: '#555', background: '#FFF8E7', border: '1px solid #F0D080', borderRadius: '4px', padding: '6px 8px' }}>
                           <div style={{ fontWeight: 600, marginBottom: '3px' }}>Spousal benefit (50% of your PIA)</div>
                           <div>At FRA ({spouseFra.toFixed(1)}): <strong>${fraMonthly.toLocaleString()}/mo</strong></div>
-                          {monthsBefore > 0
-                            ? <div>At age {effClaimAge}: <strong>${monthly.toLocaleString()}/mo</strong> <span style={{ color: '#888' }}>(-{reductionPct}% early claim)</span></div>
+                          {startAge > claimAge && (
+                            <div style={{ color: '#888' }}>Starts at spouse age {startAge} after your benefit begins.</div>
+                          )}
+                          {Number(reductionPct) > 0
+                            ? <div>At age {startAge}: <strong>${monthly.toLocaleString()}/mo</strong> <span style={{ color: '#888' }}>(-{reductionPct}% early claim)</span></div>
                             : null}
                         </div>
                       </div>
@@ -390,25 +400,31 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
 
                   {showOwn && hasSpouseEstimates && (() => {
                     const ownBenefit = ssInterpolate(inputs.spouseSs62!, inputs.spouseSs67!, inputs.spouseSs70!, claimAge, spouseFra);
-                    const spousalBenefit = spousalAt(Math.min(claimAge, 67));
+                    const ownPia = spouseOwnPiaAt(ownBenefit);
+                    const topUpStartAge = Math.max(claimAge, spouseAgeAtPrimaryFiling);
+                    const spousalExcess = Math.round(Math.max(0, primaryPIA * 0.5 - ownPia) * spousalReductionAt(topUpStartAge));
                     if (ssType === 'combined') {
-                      const ownWins = ownBenefit >= spousalBenefit;
                       return (
                         <div className="field">
                           <div style={{ fontSize: '11px', color: '#555', background: '#F0F4FF', borderRadius: '4px', padding: '6px 8px' }}>
                             <div style={{ fontWeight: 600, marginBottom: '4px' }}>SSA effective benefit at age {claimAge}</div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', background: ownWins ? '#E8F5E9' : undefined, borderRadius: '3px', padding: '2px 4px' }}>
-                                <span>Own record{ownWins ? ' ✓' : ''}</span>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderRadius: '3px', padding: '2px 4px' }}>
+                                <span>Own record</span>
                                 <strong>${ownBenefit.toLocaleString()}/mo</strong>
                               </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', background: !ownWins ? '#E8F5E9' : undefined, borderRadius: '3px', padding: '2px 4px' }}>
-                                <span>Spousal (50% PIA){!ownWins ? ' ✓' : ''}</span>
-                                <strong>${spousalBenefit.toLocaleString()}/mo</strong>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderRadius: '3px', padding: '2px 4px' }}>
+                                <span>Excess spousal top-up</span>
+                                <strong>${spousalExcess.toLocaleString()}/mo</strong>
                               </div>
                             </div>
+                            {topUpStartAge > claimAge && (
+                              <div style={{ marginTop: '4px', color: '#888' }}>
+                                Top-up starts at spouse age {topUpStartAge} after your benefit begins.
+                              </div>
+                            )}
                             <div style={{ marginTop: '5px', borderTop: '1px solid #ccc', paddingTop: '4px', color: '#1A5276', fontWeight: 600 }}>
-                              Pays: ${Math.max(ownBenefit, spousalBenefit).toLocaleString()}/mo
+                              Pays after top-up: ${(ownBenefit + spousalExcess).toLocaleString()}/mo
                             </div>
                           </div>
                         </div>
@@ -424,14 +440,49 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                     );
                   })()}
 
-                  {showOwn && !hasSpouseEstimates && inputs.spouseSs && (
-                    <div className="field">
-                      <div style={{ fontSize: '12px', color: '#555', background: '#F0F4FF', borderRadius: '4px', padding: '6px 8px' }}>
-                        <span style={{ fontWeight: 600, color: '#1A5276' }}>${inputs.spouseSs.toLocaleString()}/mo</span>
-                        <span style={{ marginLeft: 6, color: '#888' }}>manual spouse benefit at age {claimAge}</span>
+                  {showOwn && !hasSpouseEstimates && inputs.spouseSs && (() => {
+                    const ownBenefit = inputs.spouseSs;
+                    const ownPia = spouseOwnPiaAt(ownBenefit);
+                    const topUpStartAge = Math.max(claimAge, spouseAgeAtPrimaryFiling);
+                    const spousalExcess = Math.round(Math.max(0, primaryPIA * 0.5 - ownPia) * spousalReductionAt(topUpStartAge));
+
+                    if (ssType === 'combined') {
+                      return (
+                        <div className="field">
+                          <div style={{ fontSize: '11px', color: '#555', background: '#F0F4FF', borderRadius: '4px', padding: '6px 8px' }}>
+                            <div style={{ fontWeight: 600, marginBottom: '4px' }}>SSA effective benefit from manual spouse amount</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderRadius: '3px', padding: '2px 4px' }}>
+                                <span>Own record</span>
+                                <strong>${ownBenefit.toLocaleString()}/mo</strong>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', borderRadius: '3px', padding: '2px 4px' }}>
+                                <span>Excess spousal top-up</span>
+                                <strong>${spousalExcess.toLocaleString()}/mo</strong>
+                              </div>
+                            </div>
+                            {topUpStartAge > claimAge && (
+                              <div style={{ marginTop: '4px', color: '#888' }}>
+                                Top-up starts at spouse age {topUpStartAge} after your benefit begins.
+                              </div>
+                            )}
+                            <div style={{ marginTop: '5px', borderTop: '1px solid #ccc', paddingTop: '4px', color: '#1A5276', fontWeight: 600 }}>
+                              Pays after top-up: ${(ownBenefit + spousalExcess).toLocaleString()}/mo
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="field">
+                        <div style={{ fontSize: '12px', color: '#555', background: '#F0F4FF', borderRadius: '4px', padding: '6px 8px' }}>
+                          <span style={{ fontWeight: 600, color: '#1A5276' }}>${ownBenefit.toLocaleString()}/mo</span>
+                          <span style={{ marginLeft: 6, color: '#888' }}>manual spouse benefit at age {claimAge}</span>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </>
               );
             })()}

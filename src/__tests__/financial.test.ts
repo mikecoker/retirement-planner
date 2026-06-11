@@ -254,10 +254,10 @@ describe('runProjection', () => {
     };
 
     expect(spouseSsAt(params, 62)).toBe(0);
-    expect(spouseSsAt(params, 67)).toBe(975 * 12);
+    expect(spouseSsAt(params, 67)).toBe(1500 * 12);
   });
 
-  it('models combined spouse benefit as own record before primary files and max benefit after filing', () => {
+  it('models combined spouse benefit as own record plus excess spousal top-up after primary files', () => {
     const params = {
       ...BASE,
       age: 60,
@@ -274,7 +274,7 @@ describe('runProjection', () => {
     };
 
     expect(spouseSsAt(params, 62)).toBe(800 * 12);
-    expect(spouseSsAt(params, 67)).toBe(975 * 12);
+    expect(spouseSsAt(params, 67)).toBeCloseTo((800 + (1500 - 800 / 0.7)) * 12, 5);
   });
 
   it('applies Social Security benefit reduction factor to spouse benefits', () => {
