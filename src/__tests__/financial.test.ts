@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { estimateConfiguredStateTax, estimateTax, fullRetirementAge, runProjection, spouseSsAt, ssInterpolate, taxInflFactor } from '../financial';
 import { buildHistoricalScenarioPath, buildScenarioPath, runMonteCarlo } from '../monteCarlo';
+import { STATE_TAX_PRESETS } from '../stateTaxPresets';
 import type { InputParams } from '../types';
 
 const BASE: InputParams = {
@@ -485,6 +486,38 @@ describe('runProjection', () => {
     };
     expect(estimateConfiguredStateTax(60000, stateParams)).toBe(100 + 1200 + 500);
     expect(estimateConfiguredStateTax(60000, { ...stateParams, stateTaxBrackets: undefined })).toBe(3000);
+  });
+
+  it('includes state tax presets for all states and DC', () => {
+    expect(STATE_TAX_PRESETS).toHaveLength(51);
+    expect(new Set(STATE_TAX_PRESETS.map(p => p.code)).size).toBe(51);
+  });
+
+  it('calculates no-tax, flat, and bracket state tax presets', () => {
+    expect(estimateConfiguredStateTax(100000, { ...BASE, includeStateTax: true, stateTaxPreset: 'TX' })).toBe(0);
+    expect(estimateConfiguredStateTax(100000, { ...BASE, includeStateTax: true, stateTaxPreset: 'IL' })).toBe(4950);
+    expect(estimateConfiguredStateTax(60000, { ...BASE, includeStateTax: true, stateTaxPreset: 'CA', filingStatus: 'single' })).toBe(2260);
+  });
+
+  it('lets state tax presets override custom rate and bracket fields', () => {
+    const stateParams = {
+      ...BASE,
+      includeStateTax: true,
+      stateTaxPreset: 'TX',
+      stateTaxRate: 0.10,
+      stateTaxBrackets: JSON.stringify([[null, 0.10]]),
+    };
+    expect(estimateConfiguredStateTax(100000, stateParams)).toBe(0);
+  });
+
+  it('adds local tax on top of state tax presets', () => {
+    const maryland = {
+      ...BASE,
+      includeStateTax: true,
+      stateTaxPreset: 'MD',
+      stateLocalTaxRate: 0.032,
+    };
+    expect(estimateConfiguredStateTax(100000, maryland)).toBe(5750 + 3200);
   });
 
   it('models taxable account qualified dividends and realized gains', () => {

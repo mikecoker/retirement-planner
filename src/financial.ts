@@ -1,4 +1,5 @@
 import type { AccountType, InputParams, ProjectionOptions, ProjectionRow } from './types';
+import { getStateTaxPreset } from './stateTaxPresets';
 
 // IRS Uniform Lifetime Table (RMD divisors by age, SECURE 2.0)
 const RMD_FACTORS: Record<number, number> = {
@@ -188,30 +189,43 @@ function estimateLtcgTax(
   return Math.round(inFifteen * 0.15 + inTwenty * 0.20);
 }
 
-function estimateStateTax(income: number, params: InputParams): number {
+function calculateBracketTax(income: number, brackets: Array<[number | null, number]>): number {
+  const normalized = brackets
+    .filter(b => Array.isArray(b) && b.length === 2 && Number.isFinite(Number(b[1])))
+    .map(([cap, rate]) => [cap === null ? Infinity : Number(cap), Number(rate)] as [number, number])
+    .sort((a, b) => a[0] - b[0]);
+  let tax = 0;
+  let prev = 0;
+  for (const [cap, rate] of normalized) {
+    if (income <= prev) break;
+    tax += (Math.min(income, cap) - prev) * rate;
+    prev = cap;
+  }
+  return Math.round(tax);
+}
+
+function estimateStateTax(income: number, params: InputParams, status: 'single' | 'married' = params.filingStatus): number {
   if (!params.includeStateTax || income <= 0) return 0;
-  if (params.stateTaxBrackets) {
+  let tax = 0;
+  const preset = getStateTaxPreset(params.stateTaxPreset);
+  if (preset) {
+    tax = preset.brackets
+      ? calculateBracketTax(income, preset.brackets[status])
+      : preset.flatRate && preset.flatRate > 0 ? Math.round(income * preset.flatRate) : 0;
+  } else if (params.stateTaxBrackets) {
     try {
       const parsed = JSON.parse(params.stateTaxBrackets) as Array<[number, number]>;
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const brackets = parsed
-          .filter(b => Array.isArray(b) && b.length === 2 && Number.isFinite(Number(b[1])))
-          .map(([cap, rate]) => [cap === null ? Infinity : Number(cap), Number(rate)] as [number, number])
-          .sort((a, b) => a[0] - b[0]);
-        let tax = 0;
-        let prev = 0;
-        for (const [cap, rate] of brackets) {
-          if (income <= prev) break;
-          tax += (Math.min(income, cap) - prev) * rate;
-          prev = cap;
-        }
-        return Math.round(tax);
+        tax = calculateBracketTax(income, parsed);
       }
     } catch {
       // Fall back to flat state rate below.
     }
+  } else if (params.stateTaxRate > 0) {
+    tax = Math.round(income * params.stateTaxRate);
   }
-  return params.stateTaxRate > 0 ? Math.round(income * params.stateTaxRate) : 0;
+  if ((params.stateLocalTaxRate ?? 0) > 0) tax += Math.round(income * (params.stateLocalTaxRate ?? 0));
+  return tax;
 }
 
 export function estimateConfiguredStateTax(income: number, params: InputParams): number {
@@ -768,11 +782,11 @@ export function runProjection(
       // Full income tax on salary — standard deduction + progressive brackets
       if (annualSalary > 0 || investmentOrdinaryIncome > 0 || qualifiedDividends > 0 || ltcgAmount > 0) {
         const salaryFed = estimateTax(annualSalary, filingStatusForYear, num65, inflFactor);
-        const salaryState = estimateStateTax(annualSalary, params);
+        const salaryState = estimateStateTax(annualSalary, params, filingStatusForYear);
         const ordinaryTaxableIncome = Math.max(0, annualSalary + investmentOrdinaryIncome - (STD_DEDUCTION[filingStatusForYear] + num65 * ADDITIONAL_STD_65[filingStatusForYear]) * inflFactor);
         const investmentPrefTax = estimateLtcgTax(qualifiedDividends + ltcgAmount, ordinaryTaxableIncome, filingStatusForYear, inflFactor);
         federalTax = estimateTax(annualSalary + investmentOrdinaryIncome, filingStatusForYear, num65, inflFactor) + investmentPrefTax;
-        stateTax = estimateStateTax(annualSalary + investmentOrdinaryIncome + qualifiedDividends + ltcgAmount, params);
+        stateTax = estimateStateTax(annualSalary + investmentOrdinaryIncome + qualifiedDividends + ltcgAmount, params, filingStatusForYear);
         const investmentTaxDrag = Math.max(0, federalTax + stateTax - salaryFed - salaryState);
         taxable = Math.max(0, taxable - investmentTaxDrag);
         syncBucketsToTotal('taxable', taxable, scenario);
@@ -800,7 +814,7 @@ export function runProjection(
         const convFed = Math.max(0, taxWithConv - federalTax);
         federalTax = taxWithConv; // full tax: salary + conversion
         convTaxCalc = convFed;
-        const stateWithConv = estimateStateTax(annualSalary + conv, params);
+        const stateWithConv = estimateStateTax(annualSalary + conv, params, filingStatusForYear);
         convTaxCalc += Math.max(0, stateWithConv - stateTax);
         stateTax = stateWithConv;
         trad -= conv;
@@ -1013,7 +1027,7 @@ export function runProjection(
         rothPenaltyTax = Math.round(earlyRothTaxable * 0.10);
         federalTax = estimateTax(totalOrdinaryWithWithdrawals, filingStatusForYear, num65, inflFactor) + rothPenaltyTax;
 
-        stateTax = estimateStateTax(totalOrdinaryWithWithdrawals + totalPreferentialIncome, params);
+        stateTax = estimateStateTax(totalOrdinaryWithWithdrawals + totalPreferentialIncome, params, filingStatusForYear);
 
         const stdDed = (STD_DEDUCTION[filingStatusForYear] + num65 * ADDITIONAL_STD_65[filingStatusForYear]) * inflFactor;
         const ordinaryTaxableIncome = Math.max(0, totalOrdinaryWithWithdrawals - stdDed);
@@ -1040,7 +1054,7 @@ export function runProjection(
         );
         const incomeNoConv = taxableRmd + tradW + ssTaxableNoConv + pensionInc + investmentOrdinaryIncome;
         const fedNoConv = estimateTax(incomeNoConv, filingStatusForYear, num65, inflFactor);
-        const stateNoConv = estimateStateTax(incomeNoConv + ltcgAmount + qualifiedDividends, params);
+        const stateNoConv = estimateStateTax(incomeNoConv + ltcgAmount + qualifiedDividends, params, filingStatusForYear);
         const stdDedNoConv = (STD_DEDUCTION[filingStatusForYear] + num65 * ADDITIONAL_STD_65[filingStatusForYear]) * inflFactor;
         const ltcgTaxNoConv = estimateLtcgTax(
           ltcgAmount + qualifiedDividends,

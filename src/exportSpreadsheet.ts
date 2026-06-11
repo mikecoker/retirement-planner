@@ -1,10 +1,12 @@
 import * as XLSX from 'xlsx';
 import type { InputParams, ProjectionRow } from './types';
+import { getStateTaxPreset } from './stateTaxPresets';
 
 function pct(v: number) { return `${(v * 100).toFixed(2)}%`; }
 function dollar(v: number) { return Math.round(v); }
 
 function inputsSheet(inputs: InputParams): XLSX.WorkSheet {
+  const stateTaxPreset = getStateTaxPreset(inputs.stateTaxPreset);
   const rows: (string | number | boolean | undefined)[][] = [
     ['Parameter', 'Value'],
     [],
@@ -83,7 +85,12 @@ function inputsSheet(inputs: InputParams): XLSX.WorkSheet {
     ['ACA monthly premium ($)', inputs.acaMonthlyPremium],
     ['ACA monthly credit ($)', inputs.acaMonthlyCredit],
     ['Include state tax', inputs.includeStateTax],
+    ['State tax preset', inputs.stateTaxPreset ?? 'CUSTOM'],
+    ['State tax preset confidence', stateTaxPreset?.confidence ?? 'custom'],
+    ['State tax preset rates pulled', stateTaxPreset?.ratesAsOf ?? ''],
+    ['State tax preset source', stateTaxPreset?.sourceUrl ?? ''],
     ['State tax rate (%)', pct(inputs.stateTaxRate)],
+    ['Additional local tax rate (%)', pct(inputs.stateLocalTaxRate ?? 0)],
     ['State tax brackets JSON', inputs.stateTaxBrackets ?? ''],
     ['Annual QCD ($)', inputs.qcdAnnual],
     ['QCD start age', inputs.qcdStartAge],
