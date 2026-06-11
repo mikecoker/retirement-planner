@@ -456,6 +456,10 @@ export function runProjection(
   const baseReturn = options.returnRate ?? params.r;
   const conversionSchedule = options.conversionSchedule;
   const scenarioByAge = new Map((options.scenarioPath ?? []).map(y => [y.age, y]));
+  const expenseItems = params.expenseItems ?? [];
+  const scheduledExpenseItems = expenseItems.filter(item => !item.isOneTime);
+  const oneTimeExpenseItems = expenseItems.filter(item => item.isOneTime);
+  const hasScheduledExpenseItems = scheduledExpenseItems.length > 0;
   let trad = params.tradBal;
   let roth = params.rothBal;
   let rothBasis = params.rothBasis ?? params.rothBal;
@@ -810,32 +814,23 @@ export function runProjection(
       magi1YearAgo = annualSalary + conv + investmentOrdinaryIncome + qualifiedDividends + ltcgAmount; // MAGI tracking
 
       // Record expenses for display (salary covers them — no account draws)
-      if (params.expenseItems && params.expenseItems.length > 0) {
-        for (const item of params.expenseItems) {
+      if (hasScheduledExpenseItems) {
+        for (const item of scheduledExpenseItems) {
           const itemStart = item.startAge ?? params.age;
           let itemEnd = item.endAge ?? projEndAge;
           if (item.isLoan && item.loanBalance && item.loanRate !== undefined && item.monthly > 0) {
             const months = computeLoanPayoffMonths(item.loanBalance, item.monthly, item.loanRate);
             if (isFinite(months)) itemEnd = Math.min(itemEnd, Math.floor(params.age + months / 12));
           }
-          if (item.isOneTime) {
-            if (item.atAge === age) {
-              const annual = Math.round(item.monthly * expenseInflationFactor);
-              taxable = Math.max(0, taxable - annual);
-              syncBucketsToTotal('taxable', taxable, scenario);
-              yearExpense += annual;
-            }
-          } else {
-            if (age < itemStart || age > itemEnd) continue;
-            let infl = 1;
-            if (item.inflationType === 'general') infl = expenseInflationFactor;
-            else if (item.inflationType === 'healthcare') infl = healthcareInflationFactor;
-            else if (item.inflationType === 'cpi') infl = cpiInflationFactor;
-            const annual = item.monthly * 12 * infl;
-            if (item.category === 'healthcare') yearHcExpense += annual;
-            else if (item.category === 'discretionary') yearDiscExpense += annual;
-            else yearExpense += annual;
-          }
+          if (age < itemStart || age > itemEnd) continue;
+          let infl = 1;
+          if (item.inflationType === 'general') infl = expenseInflationFactor;
+          else if (item.inflationType === 'healthcare') infl = healthcareInflationFactor;
+          else if (item.inflationType === 'cpi') infl = cpiInflationFactor;
+          const annual = item.monthly * 12 * infl;
+          if (item.category === 'healthcare') yearHcExpense += annual;
+          else if (item.category === 'discretionary') yearDiscExpense += annual;
+          else yearExpense += annual;
         }
         yearExpense = Math.round(yearExpense);
         yearHcExpense = Math.round(yearHcExpense);
@@ -846,6 +841,14 @@ export function runProjection(
         yearDiscExpense = Math.round(baseDiscExpense);
         if (age >= 80) yearLtcExpense = Math.round(baseLtcExpense);
       }
+      for (const item of oneTimeExpenseItems) {
+        if (item.atAge === age) {
+          const annual = Math.round(item.monthly * expenseInflationFactor);
+          taxable = Math.max(0, taxable - annual);
+          syncBucketsToTotal('taxable', taxable, scenario);
+          yearExpense += annual;
+        }
+      }
       if (params.includeMedicarePremiums) {
         yearHcExpense += Math.round(num65 * MEDICARE_PART_B_STANDARD_MONTHLY * 12);
       }
@@ -855,9 +858,8 @@ export function runProjection(
       }
     } else {
       // Distribution phase
-      if (params.expenseItems && params.expenseItems.length > 0) {
-        for (const item of params.expenseItems) {
-          if (item.isOneTime) continue;
+      if (hasScheduledExpenseItems) {
+        for (const item of scheduledExpenseItems) {
           const itemStart = item.startAge ?? params.age;
           let itemEnd = item.endAge ?? projEndAge;
           if (item.isLoan && item.loanBalance && item.loanRate !== undefined && item.monthly > 0) {
@@ -886,11 +888,9 @@ export function runProjection(
         yearLtcExpense = Math.round(baseLtcExpense * (healthcareInflationFactor / retireFactors.healthcareFactor));
       }
       // Add one-time expenses this year
-      if (params.expenseItems) {
-        for (const item of params.expenseItems) {
-          if (item.isOneTime && item.atAge === age) {
-            yearExpense += Math.round(item.monthly * expenseInflationFactor);
-          }
+      for (const item of oneTimeExpenseItems) {
+        if (item.atAge === age) {
+          yearExpense += Math.round(item.monthly * expenseInflationFactor);
         }
       }
       yearExpense += Math.round(spendingShock);

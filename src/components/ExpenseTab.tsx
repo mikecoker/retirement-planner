@@ -44,7 +44,8 @@ const subTabBtn = (active: boolean): React.CSSProperties => ({
 export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChange }) => {
   const items = inputs.expenseItems ?? [];
   const hasItems = items.length > 0;
-  const [subTab, setSubTab] = useState<'basic' | 'advanced'>(() => hasItems ? 'advanced' : 'basic');
+  const hasScheduledItems = items.some(i => !i.isOneTime);
+  const [subTab, setSubTab] = useState<'basic' | 'advanced'>(() => hasScheduledItems ? 'advanced' : 'basic');
   const [basicDrafts, setBasicDrafts] = useState<Record<string, string>>({});
 
   const { age, retireAge, lifeExp, expenseInflationRate, healthcareInflationRate, inf } = inputs;
@@ -53,6 +54,7 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
   const recurring = items.filter(i => !i.isLoan && !i.isOneTime);
   const loans = items.filter(i => i.isLoan);
   const oneTimeItems = items.filter(i => i.isOneTime);
+  const scheduledExpenseCount = recurring.length + loans.length;
 
   const update = (id: string, patch: Partial<ExpenseItem>) =>
     onItemsChange(items.map(i => i.id === id ? { ...i, ...patch } : i));
@@ -72,6 +74,11 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
 
   const addOneTime = () => onItemsChange([...items, {
     id: newId(), name: 'One-time expense', category: 'other' as ExpenseCategory,
+    monthly: 0, inflationType: 'general' as ExpenseInflationType,
+    isOneTime: true, atAge: retireAge,
+  }]);
+  const addBasicOneTime = () => onItemsChange([...items, {
+    id: newId(), name: 'Family event', category: 'other' as ExpenseCategory,
     monthly: 0, inflationType: 'general' as ExpenseInflationType,
     isOneTime: true, atAge: retireAge,
   }]);
@@ -149,12 +156,12 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
   };
 
   const renderBasic = () => {
-    const disabled = hasItems;
+    const disabled = hasScheduledItems;
     return (
       <div>
         {disabled && (
           <div style={{ fontSize: '11px', color: '#1A5276', background: '#EAF4FB', border: '1px solid #AED6F1', borderRadius: '4px', padding: '8px 10px', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span><strong>{items.length} expense item{items.length !== 1 ? 's' : ''} active</strong> — these fields are overridden by the Advanced expense items.</span>
+            <span><strong>{scheduledExpenseCount} advanced expense item{scheduledExpenseCount !== 1 ? 's' : ''} active</strong> — monthly spending fields are overridden by Advanced recurring expenses and loans.</span>
             <button onClick={() => setSubTab('advanced')} style={{ fontSize: '11px', padding: '2px 8px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer', whiteSpace: 'nowrap', marginLeft: '10px' }}>
               View items
             </button>
@@ -273,6 +280,42 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
               onInput={(e) => onInputChange('healthcareInflationRate', Number((e.target as HTMLInputElement).value) / 100)} />
           </div>
         </div>
+        <div className="detail-section-title" style={{ marginTop: '1.4rem' }}>One-Time Expenses</div>
+        <div className="note" style={{ marginBottom: '0.5rem' }}>
+          Add future one-time costs like a wedding, home repair, relocation, vehicle purchase, family support, or moving abroad setup costs. Amounts are entered in today's dollars and inflated to the target age.
+        </div>
+        {oneTimeItems.length > 0 && (
+          <div className="optimizer-table-wrap" style={{ marginBottom: '0.5rem' }}>
+            <table className="optimizer-table opt-schedule-table">
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 160 }}>Description</th>
+                  <th>Amount (today $)</th>
+                  <th>At age</th>
+                  <th>Inflated amount</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {oneTimeItems.map(item => {
+                  const targetAge = item.atAge ?? retireAge;
+                  const yearsOut = Math.max(0, targetAge - age);
+                  const inflated = item.monthly * Math.pow(1 + expenseInflationRate, yearsOut);
+                  return (
+                    <tr key={item.id}>
+                      <td><input style={inputStyle} value={item.name} onChange={e => update(item.id, { name: e.target.value })} /></td>
+                      <td><input style={inputStyle} type="number" value={item.monthly || ''} step={1000} onChange={e => update(item.id, { monthly: Number(e.target.value) || 0 })} /></td>
+                      <td><input style={{ ...inputStyle, width: 55 }} type="number" value={item.atAge ?? retireAge} onChange={e => update(item.id, { atAge: Number(e.target.value) || retireAge })} /></td>
+                      <td style={{ fontWeight: 500 }}>{inflated > 0 ? fmt(inflated) : '—'}</td>
+                      <td><button style={btnStyle('#C0392B')} onClick={() => remove(item.id)}>&#x2715;</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <button style={{ ...btnStyle('#1A5276'), marginBottom: '0.5rem' }} onClick={addBasicOneTime}>+ Add one-time expense</button>
       </div>
     );
   };
@@ -315,8 +358,8 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
         )}
         {hasItems && (
           <div className="note" style={{ marginTop: '0.5rem', marginBottom: 0 }}>
-            These expense items are active in your projection and replace the Basic spending fields.
-            LTC reserve (Basic tab) still applies independently.
+            Recurring expenses and loans replace the Basic monthly spending fields. One-time expenses are added on top of whichever monthly spending model is active.
+            LTC reserve (Basic tab) still applies independently unless recurring Advanced expenses are active.
           </div>
         )}
       </div>
