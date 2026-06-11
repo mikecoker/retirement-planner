@@ -23,8 +23,6 @@ Detailed user documentation is drafted in [`docs/wiki`](docs/wiki/) so it can be
 - [`Home`](docs/wiki/Home.md) — wiki landing page and recommended first workflow
 - [`User Guide`](docs/wiki/User-Guide.md) — detailed walkthrough of plans, setup, results, optimizer, Monte Carlo, import, and export
 - [`Model Assumptions`](docs/wiki/Model-Assumptions.md) — tax, RMD, Social Security, return, and projection assumptions
-- [`Screenshots to Capture`](docs/wiki/Screenshots-To-Capture.md) — screenshot checklist for improving the wiki
-- [`Publishing the Wiki`](docs/wiki/Publishing-The-Wiki.md) — how to publish these pages to the repository wiki
 
 ### Tabs
 
