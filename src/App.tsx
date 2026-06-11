@@ -106,6 +106,19 @@ interface StoredPlan {
   monteCarloSettings?: MonteCarloSettings;
 }
 
+interface ExportedPlan {
+  version: number;
+  name: string;
+  inputs: InputParams;
+  conversionSchedule?: Record<number, number> | null;
+  optMinStartAge?: number;
+  monteCarloSettings?: MonteCarloSettings;
+}
+
+interface SamplePlan extends StoredPlan {
+  isSample: true;
+}
+
 type MonteCarloPreset = 'base' | 'stress';
 type MonteCarloMethod = 'parametric' | 'historical';
 
@@ -130,6 +143,29 @@ const DEFAULT_MONTE_CARLO_SETTINGS: MonteCarloSettings = {
   cashAllocation: DEFAULT_MONTE_CARLO_OPTIONS.cashAllocation,
   blockSize: DEFAULT_MONTE_CARLO_OPTIONS.blockSize,
 };
+
+const SAMPLE_PLAN_MODULES = import.meta.glob<ExportedPlan>('../sample-data/*.json', {
+  eager: true,
+  import: 'default',
+});
+const SAMPLE_ID_PREFIX = 'sample:';
+
+const cloneJson = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+const SAMPLE_PLANS: SamplePlan[] = Object.entries(SAMPLE_PLAN_MODULES)
+  .map(([path, sample]) => {
+    const slug = path.split('/').pop()?.replace(/\.json$/i, '') ?? sample.name;
+    return {
+      id: `${SAMPLE_ID_PREFIX}${slug}`,
+      name: sample.name,
+      inputs: { ...DEFAULTS, ...cloneJson(sample.inputs) },
+      conversionSchedule: cloneJson(sample.conversionSchedule ?? null),
+      optMinStartAge: sample.optMinStartAge,
+      monteCarloSettings: { ...DEFAULT_MONTE_CARLO_SETTINGS, ...(sample.monteCarloSettings ?? {}) },
+      isSample: true as const,
+    };
+  })
+  .sort((a, b) => a.name.localeCompare(b.name));
 
 function getMonteCarloOptions(
   preset: MonteCarloPreset,
@@ -264,7 +300,8 @@ const App: React.FC = () => {
   });
 
   // Derived from active plan
-  const activePlan = plans.find(p => p.id === activePlanId) ?? plans[0];
+  const activePlan = plans.find(p => p.id === activePlanId) ?? SAMPLE_PLANS.find(p => p.id === activePlanId) ?? plans[0];
+  const isSamplePlan = 'isSample' in activePlan;
   const inputs = activePlan.inputs;
   const conversionSchedule = activePlan.conversionSchedule;
   const optMinStartAge = activePlan.optMinStartAge ?? inputs.age;
@@ -356,8 +393,28 @@ const App: React.FC = () => {
 
   // ---- Plan mutations ----
 
-  const updateActivePlan = (patch: Partial<StoredPlan>) =>
+  const copyPlanToUserPlans = (source: StoredPlan, patch: Partial<StoredPlan> = {}, name = `${source.name} (copy)`) => {
+    const plan: StoredPlan = {
+      id: newPlanId(),
+      name,
+      inputs: cloneJson(source.inputs),
+      conversionSchedule: cloneJson(source.conversionSchedule),
+      optMinStartAge: source.optMinStartAge,
+      monteCarloSettings: { ...DEFAULT_MONTE_CARLO_SETTINGS, ...(source.monteCarloSettings ?? {}) },
+      ...patch,
+    };
+    setPlans(prev => [...prev, plan]);
+    setActivePlanId(plan.id);
+    return plan;
+  };
+
+  const updateActivePlan = (patch: Partial<StoredPlan>) => {
+    if (isSamplePlan) {
+      copyPlanToUserPlans(activePlan, patch);
+      return;
+    }
     setPlans(prev => prev.map(p => p.id === activePlanId ? { ...p, ...patch } : p));
+  };
 
   const setConversionSchedule = (schedule: Record<number, number> | null) =>
     updateActivePlan({ conversionSchedule: schedule });
@@ -369,9 +426,8 @@ const App: React.FC = () => {
     updateActivePlan({ monteCarloSettings: { ...monteCarloSettings, ...patch } });
 
   const handleInputChange = (field: keyof InputParams, value: string | number | boolean) => {
-    setPlans(prev => prev.map(p => {
-      if (p.id !== activePlanId) return p;
-      const next = { ...p.inputs, [field]: value };
+    const nextInputsFor = (current: InputParams): InputParams => {
+      const next = { ...current, [field]: value };
       const { ss62, ss67, ss70 } = next;
       if (ss62 && ss67 && ss70 && (field === 'ssAge' || field === 'ss62' || field === 'ss67' || field === 'ss70' || field === 'birthYear' || field === 'age')) {
         next.ss = ssInterpolate(ss62, ss67, ss70, next.ssAge, fullRetirementAge(inferredBirthYear(next)));
@@ -388,8 +444,15 @@ const App: React.FC = () => {
           spouseBirthYear !== undefined ? fullRetirementAge(spouseBirthYear) : 67,
         );
       }
-      return { ...p, inputs: next };
-    }));
+      return next;
+    };
+
+    if (isSamplePlan) {
+      copyPlanToUserPlans(activePlan, { inputs: nextInputsFor(activePlan.inputs) });
+      return;
+    }
+
+    setPlans(prev => prev.map(p => p.id === activePlanId ? { ...p, inputs: nextInputsFor(p.inputs) } : p));
   };
 
   const handleExpenseItemsChange = (items: import('./types').ExpenseItem[]) =>
@@ -409,19 +472,19 @@ const App: React.FC = () => {
   };
 
   const duplicatePlan = () => {
-    const plan: StoredPlan = { ...activePlan, id: newPlanId(), name: `${activePlan.name} (copy)` };
-    setPlans(prev => [...prev, plan]);
-    setActivePlanId(plan.id);
+    copyPlanToUserPlans(activePlan);
     setPlanMenuOpen(false);
   };
 
   const renamePlan = () => {
+    if (isSamplePlan) return;
     const name = window.prompt('Rename plan:', activePlan.name);
     if (name?.trim()) updateActivePlan({ name: name.trim() });
     setPlanMenuOpen(false);
   };
 
   const resetPlan = () => {
+    if (isSamplePlan) return;
     if (!window.confirm(`Reset "${activePlan.name}" to blank defaults? All data in this plan will be lost.`)) return;
     updateActivePlan({
       inputs: DEFAULTS,
@@ -433,7 +496,7 @@ const App: React.FC = () => {
   };
 
   const deletePlan = () => {
-    if (plans.length <= 1) return;
+    if (isSamplePlan || plans.length <= 1) return;
     if (!window.confirm(`Delete "${activePlan.name}"? This cannot be undone.`)) return;
     const remaining = plans.filter(p => p.id !== activePlanId);
     setPlans(remaining);
@@ -522,31 +585,47 @@ const App: React.FC = () => {
           >
             <span className="plan-trigger-dot" />
             <span>
-              <span className="plan-trigger-label">Active plan</span>
-              <span className="plan-trigger-name">{activePlan.name}</span>
+              <span className="plan-trigger-label">{isSamplePlan ? 'Sample plan' : 'Active plan'}</span>
+              <span className="plan-trigger-name" title={activePlan.name}>{activePlan.name}</span>
             </span>
             <span className="plan-trigger-chevron">{planMenuOpen ? '⌃' : '⌄'}</span>
           </button>
           {planMenuOpen && (
             <div className="plan-dropdown" role="menu">
-              <div className="plan-list">
-                {plans.map(plan => (
-                  <button
-                    key={plan.id}
-                    className={`plan-row ${plan.id === activePlanId ? 'active' : ''}`}
-                    onClick={() => { setActivePlanId(plan.id); setPlanMenuOpen(false); }}
-                  >
-                    <span className="plan-row-dot" />
-                    <span>{plan.name}</span>
-                  </button>
-                ))}
+              <div className="plan-scroll">
+                <div className="plan-group-label">Your plans</div>
+                <div className="plan-list">
+                  {plans.map(plan => (
+                    <button
+                      key={plan.id}
+                      className={`plan-row ${plan.id === activePlanId ? 'active' : ''}`}
+                      onClick={() => { setActivePlanId(plan.id); setPlanMenuOpen(false); }}
+                    >
+                      <span className="plan-row-dot" />
+                      <span title={plan.name}>{plan.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="plan-group-label sample">Sample plans</div>
+                <div className="plan-list">
+                  {SAMPLE_PLANS.map(plan => (
+                    <button
+                      key={plan.id}
+                      className={`plan-row sample ${plan.id === activePlanId ? 'active' : ''}`}
+                      onClick={() => { setActivePlanId(plan.id); setPlanMenuOpen(false); }}
+                    >
+                      <span className="plan-row-dot sample" />
+                      <span title={plan.name}>{plan.name}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="plan-menu-divider" />
               <button className="plan-action" onClick={addPlan}>New plan</button>
-              <button className="plan-action" onClick={renamePlan}>Rename plan</button>
-              <button className="plan-action" onClick={duplicatePlan}>Duplicate plan</button>
-              <button className="plan-action" onClick={resetPlan}>Reset to defaults</button>
-              <button className="plan-action danger" onClick={deletePlan} disabled={plans.length <= 1}>Delete plan</button>
+              <button className="plan-action" onClick={renamePlan} disabled={isSamplePlan}>Rename plan</button>
+              <button className="plan-action" onClick={duplicatePlan}>{isSamplePlan ? 'Copy sample to your plans' : 'Duplicate plan'}</button>
+              <button className="plan-action" onClick={resetPlan} disabled={isSamplePlan}>Reset to defaults</button>
+              <button className="plan-action danger" onClick={deletePlan} disabled={isSamplePlan || plans.length <= 1}>Delete plan</button>
             </div>
           )}
         </div>
