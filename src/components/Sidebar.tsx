@@ -28,7 +28,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
   const handleNumberChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
     const val = Number((e.target as HTMLInputElement).value);
     // Optional spouse fields should be undefined when empty, not 0
-    const optionalFields: (keyof InputParams)[] = ['birthYear', 'spouseAge', 'spouseBirthYear', 'spouseLifeExp', 'spouseSs62', 'spouseSs67', 'spouseSs70'];
+    const optionalFields: (keyof InputParams)[] = ['birthYear', 'spouseAge', 'spouseBirthYear', 'spouseLifeExp', 'spouseSs', 'spouseSs62', 'spouseSs67', 'spouseSs70'];
     onInputChange(field, val || (optionalFields.includes(field) ? undefined as any : 0));
   };
 
@@ -304,6 +304,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
               const claimAge = inputs.spouseSsAge ?? 67;
               const showOwn = ssType === 'own' || ssType === 'combined';
               const showSpousal = ssType === 'spousal' || ssType === 'combined';
+              const hasSpouseEstimates = !!(inputs.spouseSs62 && inputs.spouseSs67 && inputs.spouseSs70);
               const primaryFra = fullRetirementAge(inferredBirthYear(inputs));
               const spouseFra = fullRetirementAge(inferredSpouseBirthYear(inputs) ?? inferredBirthYear(inputs));
               const primaryPIA = inputs.ss67 ? inputs.ss67 / (primaryFra <= 67 ? 1 + 0.08 * (67 - primaryFra) : 1) : inputs.ss;
@@ -329,6 +330,24 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                               onInput={(e) => onInputChange(f, Number((e.target as HTMLInputElement).value) || undefined as any)} />
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {showOwn && (
+                    <div className="field">
+                      <TipLabel text="Spouse SS ($/mo)" />
+                      <input
+                        type="number"
+                        value={inputs.spouseSs || ''}
+                        step={100}
+                        placeholder={hasSpouseEstimates ? 'Optional fallback' : 'Monthly benefit at claim age'}
+                        onInput={(e) => onInputChange('spouseSs', Number((e.target as HTMLInputElement).value) || undefined as any)}
+                      />
+                      <div className="note" style={{ marginTop: '3px' }}>
+                        {hasSpouseEstimates
+                          ? 'Using spouse SSA estimates above. Manual amount is only a fallback if estimates are cleared.'
+                          : 'Using this manual spouse benefit because all three spouse SSA estimates are not entered.'}
                       </div>
                     </div>
                   )}
@@ -369,8 +388,8 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                     );
                   })()}
 
-                  {showOwn && inputs.spouseSs62 && inputs.spouseSs67 && inputs.spouseSs70 && (() => {
-                    const ownBenefit = ssInterpolate(inputs.spouseSs62, inputs.spouseSs67, inputs.spouseSs70, claimAge, spouseFra);
+                  {showOwn && hasSpouseEstimates && (() => {
+                    const ownBenefit = ssInterpolate(inputs.spouseSs62!, inputs.spouseSs67!, inputs.spouseSs70!, claimAge, spouseFra);
                     const spousalBenefit = spousalAt(Math.min(claimAge, 67));
                     if (ssType === 'combined') {
                       const ownWins = ownBenefit >= spousalBenefit;
@@ -404,6 +423,15 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
                       </div>
                     );
                   })()}
+
+                  {showOwn && !hasSpouseEstimates && inputs.spouseSs && (
+                    <div className="field">
+                      <div style={{ fontSize: '12px', color: '#555', background: '#F0F4FF', borderRadius: '4px', padding: '6px 8px' }}>
+                        <span style={{ fontWeight: 600, color: '#1A5276' }}>${inputs.spouseSs.toLocaleString()}/mo</span>
+                        <span style={{ marginLeft: 6, color: '#888' }}>manual spouse benefit at age {claimAge}</span>
+                      </div>
+                    </div>
+                  )}
                 </>
               );
             })()}

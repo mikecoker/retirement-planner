@@ -9,7 +9,7 @@ const DEFINITIONS: Record<string, string> = {
   'Spouse age': 'Your spouse\'s current age, used to model spousal Social Security benefits and joint tax calculations.',
   'Spouse birth year': 'Used to determine your spouse\'s Social Security full retirement age. Leave blank to infer it from spouse age.',
   'Spouse life expectancy': 'Your spouse\'s expected age at death. The projection runs until the later of your two life expectancies to ensure the portfolio covers both lifetimes.',
-  'Spouse SS ($/mo)': 'Your spouse\'s estimated monthly Social Security benefit at their claim age.',
+  'Spouse SS ($/mo)': 'Manual fallback for your spouse\'s estimated monthly Social Security benefit at their claim age. If spouse SSA estimates at 62/67/70 are entered, those estimates are used instead.',
   'Spouse SS claim age': 'The age when your spouse starts collecting Social Security. Same rules as yours: 62 reduces benefits, 70 maximizes them.',
   'Traditional ($)': 'Balance in traditional tax-deferred accounts (401k, 403b, traditional IRA). Withdrawals are taxed as ordinary income.',
   'Roth ($)': 'Balance in Roth accounts (Roth IRA, Roth 401k). Withdrawals are tax-free if account is at least 5 years old and you\'re 59.5+.',

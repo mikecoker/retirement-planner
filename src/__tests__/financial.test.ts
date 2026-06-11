@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { estimateConfiguredStateTax, estimateTax, fullRetirementAge, runProjection, ssInterpolate, taxInflFactor } from '../financial';
+import { estimateConfiguredStateTax, estimateTax, fullRetirementAge, runProjection, spouseSsAt, ssInterpolate, taxInflFactor } from '../financial';
 import { buildHistoricalScenarioPath, buildScenarioPath, runMonteCarlo } from '../monteCarlo';
 import type { InputParams } from '../types';
 
@@ -197,6 +197,100 @@ describe('runProjection', () => {
     const reduced = runProjection({ ...BASE, ssBenefitFactor: 0.75 }, BASE.r).find(r => r.age === BASE.ssAge)!;
 
     expect(reduced.ss).toBe(Math.round(full.ss * 0.75));
+  });
+
+  it('models spouse own-record Social Security from manual monthly benefit', () => {
+    const params = {
+      ...BASE,
+      age: 60,
+      birthYear: 1966,
+      ssAge: 67,
+      ssCOLA: 0,
+      spouseAge: 60,
+      spouseBirthYear: 1966,
+      spouseSsType: 'own' as const,
+      spouseSs: 1200,
+      spouseSsAge: 62,
+    };
+
+    expect(spouseSsAt(params, 61)).toBe(0);
+    expect(spouseSsAt(params, 62)).toBe(1200 * 12);
+  });
+
+  it('models spouse own-record Social Security from SSA age estimates', () => {
+    const params = {
+      ...BASE,
+      age: 60,
+      birthYear: 1966,
+      ssCOLA: 0,
+      spouseAge: 60,
+      spouseBirthYear: 1966,
+      spouseSsType: 'own' as const,
+      spouseSs: undefined,
+      spouseSs62: 900,
+      spouseSs67: 1400,
+      spouseSs70: 1736,
+      spouseSsAge: 70,
+    };
+
+    expect(spouseSsAt(params, 69)).toBe(0);
+    expect(spouseSsAt(params, 70)).toBe(1736 * 12);
+  });
+
+  it('models spousal-only Social Security after the spouse claims and primary has filed', () => {
+    const params = {
+      ...BASE,
+      age: 60,
+      birthYear: 1966,
+      ss: 3000,
+      ss67: 3000,
+      ssAge: 67,
+      ssCOLA: 0,
+      spouseAge: 60,
+      spouseBirthYear: 1966,
+      spouseSsType: 'spousal' as const,
+      spouseSs: undefined,
+      spouseSsAge: 62,
+    };
+
+    expect(spouseSsAt(params, 62)).toBe(0);
+    expect(spouseSsAt(params, 67)).toBe(975 * 12);
+  });
+
+  it('models combined spouse benefit as own record before primary files and max benefit after filing', () => {
+    const params = {
+      ...BASE,
+      age: 60,
+      birthYear: 1966,
+      ss: 3000,
+      ss67: 3000,
+      ssAge: 67,
+      ssCOLA: 0,
+      spouseAge: 60,
+      spouseBirthYear: 1966,
+      spouseSsType: 'combined' as const,
+      spouseSs: 800,
+      spouseSsAge: 62,
+    };
+
+    expect(spouseSsAt(params, 62)).toBe(800 * 12);
+    expect(spouseSsAt(params, 67)).toBe(975 * 12);
+  });
+
+  it('applies Social Security benefit reduction factor to spouse benefits', () => {
+    const full = {
+      ...BASE,
+      age: 60,
+      ssCOLA: 0,
+      spouseAge: 60,
+      spouseSsType: 'own' as const,
+      spouseSs: 1200,
+      spouseSsAge: 62,
+      ssBenefitFactor: 1,
+    };
+    const reduced = { ...full, ssBenefitFactor: 0.8 };
+
+    expect(spouseSsAt(reduced, 62)).toBe(Math.round(spouseSsAt(full, 62) * 0.8));
   });
 
   it('RMDs start at the correct age based on birth year and are zero before', () => {
