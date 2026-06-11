@@ -362,7 +362,7 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
 
   return (
     <div className="chart-card">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.6rem', marginBottom: '1rem' }}>
         <div className="chart-title" style={{ margin: 0 }}>Expenses</div>
         <div style={{ display: 'flex', gap: '4px' }}>
           <button style={subTabBtn(subTab === 'basic')} onClick={() => setSubTab('basic')}>Basic</button>

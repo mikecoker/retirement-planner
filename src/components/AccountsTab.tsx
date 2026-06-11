@@ -472,7 +472,7 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
         {rateSlider('Realized LTCG yield (%)', 'taxableRealizedGainYield', inputs.taxableRealizedGainYield ?? 0, 0, 8, 0.25, 2)}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.6rem', marginBottom: '1rem' }}>
         <div className="chart-title" style={{ margin: 0 }}>Accounts</div>
         <div style={{ display: 'flex', gap: '4px' }}>
           <button style={subTabBtn(subTab === 'basic')} onClick={() => setSubTab('basic')}>Basic</button>
