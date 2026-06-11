@@ -76,6 +76,13 @@ h1 { font-size: 16px; font-weight: 500; padding: 0.75rem 1rem; background: #fff;
 .header { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: #fff; border-bottom: 0.5px solid rgba(0,0,0,0.1); }
 .header h1 { padding: 0; border: none; font-size: 16px; }
 .header span { font-size: 11px; color: #999; }
+.dollar-mode { display: inline-flex; align-items: center; gap: 4px; border: 0.5px solid rgba(0,0,0,0.14); border-radius: 10px; padding: 3px; background: #fff; }
+.dollar-mode-label { padding: 0 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #777; }
+.dollar-mode button { border: none; background: transparent; color: #555; border-radius: 7px; padding: 6px 10px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.dollar-mode button:hover { background: #f4f4f1; }
+.dollar-mode button.active { background: #E8F5F3; color: #164F47; }
+.dollar-mode-note { margin: -0.1rem 0 0.7rem; color: #666; font-size: 11px; line-height: 1.45; }
+.dollar-mode-note strong { color: #1a1a1a; font-weight: 700; }
 .plan-menu { position: relative; width: 260px; }
 .plan-trigger { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 0.5px solid rgba(0,0,0,0.16); border-radius: 10px; background: #fff; color: #1a1a1a; padding: 8px 10px; font-family: inherit; text-align: left; cursor: pointer; }
 .plan-trigger.open { border-color: #4B7DFF; box-shadow: 0 0 0 3px rgba(75,125,255,0.18); }
@@ -319,10 +326,40 @@ body {
 .header {
   grid-column: 2;
   grid-row: 1;
-  justify-content: flex-end;
+  justify-content: space-between;
   background: var(--bg);
   border-bottom: none;
   padding: 1.65rem 2rem 0.5rem;
+}
+
+.dollar-mode {
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+
+.dollar-mode-label {
+  color: var(--text-faint);
+}
+
+.dollar-mode button {
+  color: var(--text-muted);
+}
+
+.dollar-mode button:hover {
+  background: var(--panel-3);
+}
+
+.dollar-mode button.active {
+  background: rgba(103,212,197,0.18);
+  color: var(--accent);
+}
+
+.dollar-mode-note {
+  color: var(--text-muted);
+}
+
+.dollar-mode-note strong {
+  color: var(--text);
 }
 
 .main {

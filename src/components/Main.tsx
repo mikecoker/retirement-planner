@@ -67,6 +67,7 @@ interface MainProps {
     cashAllocation: number,
     blockSize: number,
   ) => MonteCarloOptions;
+  dollarMode: DollarMode;
 }
 
 const fmt = (n: number): string => {
@@ -84,6 +85,7 @@ const CHART_GRID = 'rgba(141,153,166,0.16)';
 type OptimizerGoal = 'tax' | 'portfolio' | 'peakrate' | 'greedy';
 type MonteCarloPreset = 'base' | 'stress';
 type MonteCarloMethod = 'parametric' | 'historical';
+type DollarMode = 'nominal' | 'today';
 
 const CollapsibleTableSection: React.FC<{
   id: string;
@@ -160,6 +162,7 @@ const Main: React.FC<MainProps> = ({
   mcBlockSize,
   setMcBlockSize,
   getMonteCarloOptions,
+  dollarMode,
 }) => {
   const [optimizerGoal, setOptimizerGoal] = useState<OptimizerGoal>('tax');
   const allRows = rows.slice(1); // all years from current age onward (skip y=0 initial state)
@@ -209,6 +212,20 @@ const Main: React.FC<MainProps> = ({
     : 0;
   const spouseSsMonthly = Math.round(spouseSsAnnualAtClaim / 12);
   const totalSsMonthly = primarySsMonthly + spouseSsMonthly;
+  const displayAtAge = (value: number, age: number): number =>
+    dollarMode === 'today'
+      ? value / Math.pow(1 + inputs.inf, Math.max(0, age - inputs.age))
+      : value;
+  const displayFmt = (value: number, age: number): string => fmt(displayAtAge(value, age));
+  const dollarModeLabel = dollarMode === 'today' ? "Today's dollars" : 'Future dollars';
+  const DollarModeNote = () => (
+    <div className="dollar-mode-note">
+      Showing <strong>{dollarModeLabel}</strong>
+      {dollarMode === 'today'
+        ? `, discounted at ${(inputs.inf * 100).toFixed(2)}% from age ${inputs.age}.`
+        : '. Projected values include inflation and growth assumptions.'}
+    </div>
+  );
   const conversionRows = conversionSchedule
     ? Object.entries(conversionSchedule)
       .map(([age, amount]) => ({ age: Number(age), amount }))
@@ -259,11 +276,11 @@ const Main: React.FC<MainProps> = ({
   const balanceData = (): ChartData<'line', number[], string> => ({
     labels: rows.map(r => String(r.age)),
     datasets: [
-      { label: 'Traditional', data: rows.map(r => r.trad), borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.08)', fill: true, pointRadius: 0, tension: 0.4, borderWidth: 2 },
-      { label: 'Roth', data: rows.map(r => r.roth), borderColor: '#1D9E75', backgroundColor: 'rgba(29,158,117,0.08)', fill: true, pointRadius: 0, tension: 0.4, borderWidth: 2 },
-      { label: 'Taxable', data: rows.map(r => r.taxable), borderColor: '#9B59B6', backgroundColor: 'rgba(155,89,182,0.06)', fill: true, pointRadius: 0, tension: 0.4, borderWidth: 2 },
-      { label: 'HSA', data: rows.map(r => r.hsa), borderColor: '#F39C12', backgroundColor: 'rgba(243,156,18,0.06)', fill: true, pointRadius: 0, tension: 0.4, borderWidth: 2 },
-      { label: 'Total', data: rows.map(r => r.total), borderColor: '#888780', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.4, borderWidth: 1.5, borderDash: [4, 3] },
+      { label: 'Traditional', data: rows.map(r => displayAtAge(r.trad, r.age)), borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.08)', fill: true, pointRadius: 0, tension: 0.4, borderWidth: 2 },
+      { label: 'Roth', data: rows.map(r => displayAtAge(r.roth, r.age)), borderColor: '#1D9E75', backgroundColor: 'rgba(29,158,117,0.08)', fill: true, pointRadius: 0, tension: 0.4, borderWidth: 2 },
+      { label: 'Taxable', data: rows.map(r => displayAtAge(r.taxable, r.age)), borderColor: '#9B59B6', backgroundColor: 'rgba(155,89,182,0.06)', fill: true, pointRadius: 0, tension: 0.4, borderWidth: 2 },
+      { label: 'HSA', data: rows.map(r => displayAtAge(r.hsa, r.age)), borderColor: '#F39C12', backgroundColor: 'rgba(243,156,18,0.06)', fill: true, pointRadius: 0, tension: 0.4, borderWidth: 2 },
+      { label: 'Total', data: rows.map(r => displayAtAge(r.total, r.age)), borderColor: '#888780', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.4, borderWidth: 1.5, borderDash: [4, 3] },
     ],
   });
 
@@ -271,18 +288,18 @@ const Main: React.FC<MainProps> = ({
   const incomeData = (): ChartData<'bar', number[], string> => ({
     labels: allRows.map(r => String(r.age)),
     datasets: [
-      { label: 'Salary', data: allRows.map(r => getSalary(r)), backgroundColor: '#2ECC71', stack: 'income', type: 'bar' as const },
-      { label: 'RMD', data: allRows.map(r => r.rmd), backgroundColor: '#BA7517', stack: 'income', type: 'bar' as const },
-      { label: 'Conversion', data: allRows.map(r => r.conv), backgroundColor: '#378ADD', stack: 'income', type: 'bar' as const },
-      { label: 'Traditional IRA withdrawal', data: allRows.map(r => r.tradW), backgroundColor: '#5DADE2', stack: 'income', type: 'bar' as const },
-      { label: 'Roth IRA withdrawal', data: allRows.map(r => r.rothW), backgroundColor: '#1D9E75', stack: 'income', type: 'bar' as const },
-      { label: 'Taxable account withdrawal', data: allRows.map(r => r.taxableW), backgroundColor: '#9B59B6', stack: 'income', type: 'bar' as const },
-      { label: 'HSA withdrawal', data: allRows.map(r => r.hsaW), backgroundColor: '#F39C12', stack: 'income', type: 'bar' as const },
-      { label: 'SS (primary)', data: allRows.map(r => r.ss), backgroundColor: '#9FE1CB', stack: 'income', type: 'bar' as const },
-      { label: 'SS (spouse)', data: allRows.map(r => r.spouseSs), backgroundColor: '#76D7C4', stack: 'income', type: 'bar' as const },
-      { label: 'Pension/Annuity', data: allRows.map(r => r.pension), backgroundColor: '#8E44AD', stack: 'income', type: 'bar' as const },
-      { label: 'Taxes', data: allRows.map(r => -r.totalTax), backgroundColor: '#F09595', stack: 'tax', type: 'bar' as const },
-      { label: 'Expenses', data: allRows.map(r => r.totalSpending), type: 'line' as const, borderColor: '#D85A30', backgroundColor: 'transparent', pointRadius: 0, tension: 0.3, borderWidth: 2, order: 0 },
+      { label: 'Salary', data: allRows.map(r => displayAtAge(getSalary(r), r.age)), backgroundColor: '#2ECC71', stack: 'income', type: 'bar' as const },
+      { label: 'RMD', data: allRows.map(r => displayAtAge(r.rmd, r.age)), backgroundColor: '#BA7517', stack: 'income', type: 'bar' as const },
+      { label: 'Conversion', data: allRows.map(r => displayAtAge(r.conv, r.age)), backgroundColor: '#378ADD', stack: 'income', type: 'bar' as const },
+      { label: 'Traditional IRA withdrawal', data: allRows.map(r => displayAtAge(r.tradW, r.age)), backgroundColor: '#5DADE2', stack: 'income', type: 'bar' as const },
+      { label: 'Roth IRA withdrawal', data: allRows.map(r => displayAtAge(r.rothW, r.age)), backgroundColor: '#1D9E75', stack: 'income', type: 'bar' as const },
+      { label: 'Taxable account withdrawal', data: allRows.map(r => displayAtAge(r.taxableW, r.age)), backgroundColor: '#9B59B6', stack: 'income', type: 'bar' as const },
+      { label: 'HSA withdrawal', data: allRows.map(r => displayAtAge(r.hsaW, r.age)), backgroundColor: '#F39C12', stack: 'income', type: 'bar' as const },
+      { label: 'SS (primary)', data: allRows.map(r => displayAtAge(r.ss, r.age)), backgroundColor: '#9FE1CB', stack: 'income', type: 'bar' as const },
+      { label: 'SS (spouse)', data: allRows.map(r => displayAtAge(r.spouseSs, r.age)), backgroundColor: '#76D7C4', stack: 'income', type: 'bar' as const },
+      { label: 'Pension/Annuity', data: allRows.map(r => displayAtAge(r.pension, r.age)), backgroundColor: '#8E44AD', stack: 'income', type: 'bar' as const },
+      { label: 'Taxes', data: allRows.map(r => -displayAtAge(r.totalTax, r.age)), backgroundColor: '#F09595', stack: 'tax', type: 'bar' as const },
+      { label: 'Expenses', data: allRows.map(r => displayAtAge(r.totalSpending, r.age)), type: 'line' as const, borderColor: '#D85A30', backgroundColor: 'transparent', pointRadius: 0, tension: 0.3, borderWidth: 2, order: 0 },
     ] as any,
   });
 
@@ -290,8 +307,8 @@ const Main: React.FC<MainProps> = ({
   const rmdData = (): ChartData<'bar', number[], string> => ({
     labels: allRows.map(r => String(r.age)),
     datasets: [
-      { label: 'RMD required', data: allRows.map(r => r.rmd), backgroundColor: '#BA7517', stack: 'a', type: 'bar' },
-      { label: 'Roth conversion', data: allRows.map(r => r.conv), backgroundColor: '#378ADD', stack: 'a', type: 'bar' },
+      { label: 'RMD required', data: allRows.map(r => displayAtAge(r.rmd, r.age)), backgroundColor: '#BA7517', stack: 'a', type: 'bar' },
+      { label: 'Roth conversion', data: allRows.map(r => displayAtAge(r.conv, r.age)), backgroundColor: '#378ADD', stack: 'a', type: 'bar' },
     ],
   });
 
@@ -307,9 +324,9 @@ const Main: React.FC<MainProps> = ({
   const taxDollarData = (): ChartData<'line', number[], string> => ({
     labels: allRows.map(r => String(r.age)),
     datasets: [
-      { label: 'Federal tax', data: allRows.map(r => r.federalTax), borderColor: '#E67E22', backgroundColor: 'rgba(230,126,34,0.07)', fill: true, pointRadius: 0, tension: 0.3, borderWidth: 2 },
-      { label: 'State tax', data: allRows.map(r => r.stateTax), borderColor: '#27AE60', backgroundColor: 'rgba(39,174,96,0.07)', fill: true, pointRadius: 0, tension: 0.3, borderWidth: 2 },
-      { label: 'IRMAA (B+D)', data: allRows.map(r => r.irmaaPartB + r.irmaaPartD), borderColor: '#8E44AD', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, borderWidth: 2, borderDash: [4, 3] },
+      { label: 'Federal tax', data: allRows.map(r => displayAtAge(r.federalTax, r.age)), borderColor: '#E67E22', backgroundColor: 'rgba(230,126,34,0.07)', fill: true, pointRadius: 0, tension: 0.3, borderWidth: 2 },
+      { label: 'State tax', data: allRows.map(r => displayAtAge(r.stateTax, r.age)), borderColor: '#27AE60', backgroundColor: 'rgba(39,174,96,0.07)', fill: true, pointRadius: 0, tension: 0.3, borderWidth: 2 },
+      { label: 'IRMAA (B+D)', data: allRows.map(r => displayAtAge(r.irmaaPartB + r.irmaaPartD, r.age)), borderColor: '#8E44AD', backgroundColor: 'transparent', fill: false, pointRadius: 0, tension: 0.3, borderWidth: 2, borderDash: [4, 3] },
     ],
   });
 
@@ -317,9 +334,9 @@ const Main: React.FC<MainProps> = ({
   const cashflowData = (): ChartData<'bar', number[], string> => ({
     labels: allRows.map(r => String(r.age)),
     datasets: [
-      { label: 'Total income', data: allRows.map(r => getSalary(r) + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW + r.ss + r.spouseSs + r.pension), backgroundColor: '#27AE60', stack: 'cf', type: 'bar' as const },
-      { label: 'Total spending', data: allRows.map(r => -r.totalSpending), backgroundColor: '#E74C3C', stack: 'cf', type: 'bar' as const },
-      { label: 'Total tax', data: allRows.map(r => -r.totalTax), backgroundColor: '#F09595', stack: 'cf', type: 'bar' as const },
+      { label: 'Total income', data: allRows.map(r => displayAtAge(getSalary(r) + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW + r.ss + r.spouseSs + r.pension, r.age)), backgroundColor: '#27AE60', stack: 'cf', type: 'bar' as const },
+      { label: 'Total spending', data: allRows.map(r => -displayAtAge(r.totalSpending, r.age)), backgroundColor: '#E74C3C', stack: 'cf', type: 'bar' as const },
+      { label: 'Total tax', data: allRows.map(r => -displayAtAge(r.totalTax, r.age)), backgroundColor: '#F09595', stack: 'cf', type: 'bar' as const },
     ] as any,
   });
 
@@ -399,8 +416,14 @@ const Main: React.FC<MainProps> = ({
     if (rmdRows.length === 0) return <div className="note">No RMD/SS data yet for this scenario.</div>;
 
     const firstRmd = rmdRows.find(r => r.rmd > 0);
-    const peakRmd = rmdRows.reduce((mx, r) => r.rmd > mx.rmd ? r : mx, rmdRows[0]);
-    const peakConv = rmdRows.reduce((mx, r) => r.conv > mx.conv ? r : mx, rmdRows[0]);
+    const peakRmd = rmdRows.reduce(
+      (mx, r) => displayAtAge(r.rmd, r.age) > displayAtAge(mx.rmd, mx.age) ? r : mx,
+      rmdRows[0]
+    );
+    const peakConv = rmdRows.reduce(
+      (mx, r) => displayAtAge(r.conv, r.age) > displayAtAge(mx.conv, mx.age) ? r : mx,
+      rmdRows[0]
+    );
 
     return (
       <div className="detail-panel">
@@ -411,7 +434,7 @@ const Main: React.FC<MainProps> = ({
           </div>
           <div className="detail-item">
             <div className="detail-label">First RMD amount</div>
-            <div className="detail-value">{firstRmd ? fmt(firstRmd.rmd) : '—'}</div>
+            <div className="detail-value">{firstRmd ? displayFmt(firstRmd.rmd, firstRmd.age) : '—'}</div>
           </div>
           <div className="detail-item">
             <div className="detail-label">Peak RMD age</div>
@@ -419,15 +442,15 @@ const Main: React.FC<MainProps> = ({
           </div>
           <div className="detail-item">
             <div className="detail-label">Peak RMD amount</div>
-            <div className="detail-value">{fmt(peakRmd.rmd)}</div>
+            <div className="detail-value">{displayFmt(peakRmd.rmd, peakRmd.age)}</div>
           </div>
           <div className="detail-item">
             <div className="detail-label">Peak conversion</div>
-            <div className="detail-value">{peakConv.conv > 0 ? fmt(peakConv.conv) + ' (age ' + peakConv.age + ')' : 'None'}</div>
+            <div className="detail-value">{peakConv.conv > 0 ? displayFmt(peakConv.conv, peakConv.age) + ' (age ' + peakConv.age + ')' : 'None'}</div>
           </div>
           <div className="detail-item">
             <div className="detail-label">Total conversions</div>
-            <div className="detail-value">{fmt(rmdRows.reduce((s, r) => s + r.conv, 0))}</div>
+            <div className="detail-value">{fmt(rmdRows.reduce((s, r) => s + displayAtAge(r.conv, r.age), 0))}</div>
           </div>
         </div>
 
@@ -435,11 +458,11 @@ const Main: React.FC<MainProps> = ({
         <div className="detail-grid">
           <div className="detail-item">
             <div className="detail-label">Provisional income at first RMD</div>
-            <div className="detail-value">{firstRmd ? fmt(firstRmd.rmd + firstRmd.conv + (firstRmd.ss + firstRmd.spouseSs) * 0.5) : '—'}</div>
+            <div className="detail-value">{firstRmd ? displayFmt(firstRmd.rmd + firstRmd.conv + (firstRmd.ss + firstRmd.spouseSs) * 0.5, firstRmd.age) : '—'}</div>
           </div>
           <div className="detail-item">
             <div className="detail-label">Taxable SS at first RMD</div>
-            <div className="detail-value">{firstRmd ? fmt(firstRmd.ssTaxable) : '—'}</div>
+            <div className="detail-value">{firstRmd ? displayFmt(firstRmd.ssTaxable, firstRmd.age) : '—'}</div>
           </div>
           <div className="detail-item">
             <div className="detail-label">Marginal rate at first RMD</div>
@@ -458,7 +481,8 @@ const Main: React.FC<MainProps> = ({
           const convRows = allRows.filter(r => r.conv > 0);
           if (convRows.length === 0) return null;
 
-          const totalConvTax = convRows.reduce((s, r) => s + r.convTax, 0);
+          const totalConverted = convRows.reduce((s, r) => s + displayAtAge(r.conv, r.age), 0);
+          const totalConvTax = convRows.reduce((s, r) => s + displayAtAge(r.convTax, r.age), 0);
           const shortfallRows = convRows.filter(r => r.tradW > 0);
           const hasShortfall = shortfallRows.length > 0;
           const convAgeRange = convRows.length > 0
@@ -470,7 +494,7 @@ const Main: React.FC<MainProps> = ({
               <div className="rmd-tax-cost-summary">
                 <div>
                   <div className="detail-label">Total converted</div>
-                  <div className="detail-value">{fmt(convRows.reduce((s, r) => s + r.conv, 0))}</div>
+                  <div className="detail-value">{fmt(totalConverted)}</div>
                 </div>
                 <div>
                   <div className="detail-label">Tax on conversions</div>
@@ -479,7 +503,7 @@ const Main: React.FC<MainProps> = ({
                 <div>
                   <div className="detail-label">Average conversion rate</div>
                   <div className="detail-value">
-                    {convRows.reduce((s, r) => s + r.conv, 0) > 0 ? pct(totalConvTax / convRows.reduce((s, r) => s + r.conv, 0)) : '—'}
+                    {totalConverted > 0 ? pct(totalConvTax / totalConverted) : '—'}
                   </div>
                 </div>
               </div>
@@ -501,21 +525,21 @@ const Main: React.FC<MainProps> = ({
                     {convRows.map(r => (
                       <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r, r.tradW > 0 ? { background: '#FFF5F5' } : undefined)}>
                         <td>{r.age}<SurvivorTag age={r.age} /></td>
-                        <td>{fmt(r.conv)}</td>
-                        <td>{fmt(r.convTax)}</td>
-                        <td>{fmt(r.totalTax)}</td>
+                        <td>{displayFmt(r.conv, r.age)}</td>
+                        <td>{displayFmt(r.convTax, r.age)}</td>
+                        <td>{displayFmt(r.totalTax, r.age)}</td>
                         <td>{r.conv > 0 ? pct(r.convTax / r.conv) : '—'}</td>
                         <td style={r.tradW > 0 ? { color: '#C0392B', fontWeight: 600 } : undefined}>
-                          {fmt(r.taxable)}{r.tradW > 0 ? ' ⚠' : ''}
+                          {displayFmt(r.taxable, r.age)}{r.tradW > 0 ? ' ⚠' : ''}
                         </td>
                       </tr>
                     ))}
                     <tr style={{ fontWeight: 600, borderTop: '2px solid #ddd' }}>
                       <td>Total</td>
-                      <td>{fmt(convRows.reduce((s, r) => s + r.conv, 0))}</td>
+                      <td>{fmt(totalConverted)}</td>
                       <td>{fmt(totalConvTax)}</td>
                       <td>—</td>
-                      <td>{convRows.reduce((s, r) => s + r.conv, 0) > 0 ? pct(totalConvTax / convRows.reduce((s, r) => s + r.conv, 0)) : '—'}</td>
+                      <td>{totalConverted > 0 ? pct(totalConvTax / totalConverted) : '—'}</td>
                       <td>—</td>
                     </tr>
                   </tbody>
@@ -704,6 +728,7 @@ const Main: React.FC<MainProps> = ({
       {activeTab === 'balance' && (
         <div className="chart-card">
           <div className="chart-title">Portfolio balances over time</div>
+          <DollarModeNote />
           <div className="legend">
             <span className="li"><span className="ls" style={{ background: '#378ADD' }}></span>Traditional</span>
             <span className="li"><span className="ls" style={{ background: '#1D9E75' }}></span>Roth</span>
@@ -739,13 +764,13 @@ const Main: React.FC<MainProps> = ({
                         {r.age === inputs.retireAge && <span style={{ marginLeft: 6, fontSize: 10, color: '#378ADD', fontWeight: 600 }}>RETIRE</span>}
                         <SurvivorTag age={r.age} />
                       </td>
-                      <td>{fmt(r.trad)}</td>
-                      <td>{fmt(r.roth)}</td>
-                      <td>{fmt(r.taxable)}</td>
-                      <td>{fmt(r.hsa)}</td>
-                      <td style={{ fontWeight: 600 }}>{fmt(r.total)}</td>
+                      <td>{displayFmt(r.trad, r.age)}</td>
+                      <td>{displayFmt(r.roth, r.age)}</td>
+                      <td>{displayFmt(r.taxable, r.age)}</td>
+                      <td>{displayFmt(r.hsa, r.age)}</td>
+                      <td style={{ fontWeight: 600 }}>{displayFmt(r.total, r.age)}</td>
                       <td style={{ color: change === null ? undefined : change >= 0 ? '#1D9E75' : '#C0392B' }}>
-                        {change === null ? '—' : (change >= 0 ? '+' : '') + fmt(change)}
+                        {change === null ? '—' : (change >= 0 ? '+' : '') + displayFmt(change, r.age)}
                       </td>
                     </tr>
                   );
@@ -759,6 +784,7 @@ const Main: React.FC<MainProps> = ({
       {activeTab === 'income' && (
         <div className="chart-card">
           <div className="chart-title">Annual income sources vs expenses</div>
+          <DollarModeNote />
           <div className="legend">
             <span className="li"><span className="ls" style={{ background: '#2ECC71' }}></span>Salary</span>
             <span className="li"><span className="ls" style={{ background: '#BA7517' }}></span>RMD</span>
@@ -808,23 +834,23 @@ const Main: React.FC<MainProps> = ({
                   return (
                     <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r, netSpendable < -2000 ? { background: '#FFF5F5' } : undefined)}>
                       <td>{r.age}<SurvivorTag age={r.age} /></td>
-                      <td>{salary > 0 ? fmt(salary) : '—'}</td>
-                      <td>{r.ss + r.spouseSs > 0 ? fmt(r.ss + r.spouseSs) : '—'}</td>
-                      <td>{r.pension > 0 ? fmt(r.pension) : '—'}</td>
-                      <td>{r.rmd > 0 ? fmt(r.rmd) : '—'}</td>
-                      <td>{r.conv > 0 ? fmt(r.conv) : '—'}</td>
-                      <td>{r.tradW > 0 ? fmt(r.tradW) : '—'}</td>
-                      <td>{r.rothW > 0 ? fmt(r.rothW) : '—'}</td>
-                      <td>{r.taxableW > 0 ? fmt(r.taxableW) : '—'}</td>
-                      <td>{r.hsaW > 0 ? fmt(r.hsaW) : '—'}</td>
-                      <td style={{ fontWeight: 500 }}>{fmt(totalIn)}</td>
-                      <td>{fmt(r.totalSpending)}</td>
-                      <td>{fmt(r.totalTax)}</td>
+                      <td>{salary > 0 ? displayFmt(salary, r.age) : '—'}</td>
+                      <td>{r.ss + r.spouseSs > 0 ? displayFmt(r.ss + r.spouseSs, r.age) : '—'}</td>
+                      <td>{r.pension > 0 ? displayFmt(r.pension, r.age) : '—'}</td>
+                      <td>{r.rmd > 0 ? displayFmt(r.rmd, r.age) : '—'}</td>
+                      <td>{r.conv > 0 ? displayFmt(r.conv, r.age) : '—'}</td>
+                      <td>{r.tradW > 0 ? displayFmt(r.tradW, r.age) : '—'}</td>
+                      <td>{r.rothW > 0 ? displayFmt(r.rothW, r.age) : '—'}</td>
+                      <td>{r.taxableW > 0 ? displayFmt(r.taxableW, r.age) : '—'}</td>
+                      <td>{r.hsaW > 0 ? displayFmt(r.hsaW, r.age) : '—'}</td>
+                      <td style={{ fontWeight: 500 }}>{displayFmt(totalIn, r.age)}</td>
+                      <td>{displayFmt(r.totalSpending, r.age)}</td>
+                      <td>{displayFmt(r.totalTax, r.age)}</td>
                       <td style={{ color: net < -500 ? '#C0392B' : net > 500 ? '#1D9E75' : undefined }}>
-                        {net >= 0 ? '+' : ''}{fmt(net)}
+                        {net >= 0 ? '+' : ''}{displayFmt(net, r.age)}
                       </td>
                       <td style={{ color: netSpendable < -2000 ? '#C0392B' : netSpendable > 500 ? '#1D9E75' : undefined, fontWeight: 500 }}>
-                        {netSpendable >= 0 ? '+' : ''}{fmt(netSpendable)}
+                        {netSpendable >= 0 ? '+' : ''}{displayFmt(netSpendable, r.age)}
                       </td>
                     </tr>
                   );
@@ -849,6 +875,7 @@ const Main: React.FC<MainProps> = ({
         return (
           <div className="chart-card">
             <div className="chart-title">RMDs and Roth conversions</div>
+            <DollarModeNote />
             <div className="rmd-layout">
               <div className="rmd-main-panel">
                 <div className="rmd-summary">
@@ -930,10 +957,10 @@ const Main: React.FC<MainProps> = ({
                         {tableRows.map(r => (
                           <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r)}>
                             <td>{r.age}<SurvivorTag age={r.age} /></td>
-                            <td>{r.rmd > 0 ? fmt(r.rmd) : '—'}</td>
-                            <td>{r.qcd > 0 ? fmt(r.qcd) : '—'}</td>
-                            <td>{r.conv > 0 ? fmt(r.conv) : '—'}</td>
-                            <td>{fmt(r.trad)}</td>
+                            <td>{r.rmd > 0 ? displayFmt(r.rmd, r.age) : '—'}</td>
+                            <td>{r.qcd > 0 ? displayFmt(r.qcd, r.age) : '—'}</td>
+                            <td>{r.conv > 0 ? displayFmt(r.conv, r.age) : '—'}</td>
+                            <td>{displayFmt(r.trad, r.age)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -950,6 +977,7 @@ const Main: React.FC<MainProps> = ({
       {activeTab === 'tax' && (
         <div className="chart-card">
           <div className="chart-title">Tax analysis over retirement</div>
+          <DollarModeNote />
 
           <div className="tax-layout">
             <div className="tax-main-panel">
@@ -957,7 +985,7 @@ const Main: React.FC<MainProps> = ({
               <div className="tax-summary">
                 <div>
                   <div className="detail-label">Lifetime taxes</div>
-                  <div className="rmd-summary-value">{fmt(allRows.reduce((s, r) => s + r.totalTax, 0))}</div>
+                  <div className="rmd-summary-value">{fmt(allRows.reduce((s, r) => s + displayAtAge(r.totalTax, r.age), 0))}</div>
                 </div>
                 <div>
                   <div className="detail-label">Peak marginal rate</div>
@@ -989,15 +1017,15 @@ const Main: React.FC<MainProps> = ({
                 <div className="detail-grid">
                   <div className="detail-item">
                     <div className="detail-label">Federal tax</div>
-                    <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.federalTax, 0))}</div>
+                    <div className="detail-value">{fmt(allRows.reduce((s, r) => s + displayAtAge(r.federalTax, r.age), 0))}</div>
                   </div>
                   <div className="detail-item">
                     <div className="detail-label">State tax</div>
-                    <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.stateTax, 0))}</div>
+                    <div className="detail-value">{fmt(allRows.reduce((s, r) => s + displayAtAge(r.stateTax, r.age), 0))}</div>
                   </div>
                   <div className="detail-item">
                     <div className="detail-label">IRMAA (Part B + D)</div>
-                    <div className="detail-value">{fmt(allRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0))}</div>
+                    <div className="detail-value">{fmt(allRows.reduce((s, r) => s + displayAtAge(r.irmaaPartB + r.irmaaPartD, r.age), 0))}</div>
                   </div>
                   <div className="detail-item">
                     <div className="detail-label">Avg taxable SS %</div>
@@ -1131,13 +1159,13 @@ const Main: React.FC<MainProps> = ({
                 {allRows.map(r => (
                   <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r)}>
                     <td>{r.age}<SurvivorTag age={r.age} /></td>
-                    <td>{fmt(r.ordinaryIncome)}</td>
-                    <td>{fmt(r.standardDeduction)}</td>
-                    <td>{fmt(r.taxableIncome)}</td>
-                    <td>{fmt(r.federalTax)}</td>
-                    <td>{r.stateTax > 0 ? fmt(r.stateTax) : '—'}</td>
-                    <td>{r.irmaaPartB + r.irmaaPartD > 0 ? fmt(r.irmaaPartB + r.irmaaPartD) : '—'}</td>
-                    <td style={{ fontWeight: 600 }}>{fmt(r.totalTax)}</td>
+                    <td>{displayFmt(r.ordinaryIncome, r.age)}</td>
+                    <td>{displayFmt(r.standardDeduction, r.age)}</td>
+                    <td>{displayFmt(r.taxableIncome, r.age)}</td>
+                    <td>{displayFmt(r.federalTax, r.age)}</td>
+                    <td>{r.stateTax > 0 ? displayFmt(r.stateTax, r.age) : '—'}</td>
+                    <td>{r.irmaaPartB + r.irmaaPartD > 0 ? displayFmt(r.irmaaPartB + r.irmaaPartD, r.age) : '—'}</td>
+                    <td style={{ fontWeight: 600 }}>{displayFmt(r.totalTax, r.age)}</td>
                     <td style={{ color: r.marginalRate >= 0.24 ? '#C0392B' : r.marginalRate >= 0.22 ? '#BA7517' : undefined }}>
                       {pct(r.marginalRate)}
                     </td>
@@ -1149,10 +1177,10 @@ const Main: React.FC<MainProps> = ({
                   <td>—</td>
                   <td>—</td>
                   <td>—</td>
-                  <td>{fmt(allRows.reduce((s, r) => s + r.federalTax, 0))}</td>
-                  <td>{fmt(allRows.reduce((s, r) => s + r.stateTax, 0))}</td>
-                  <td>{fmt(allRows.reduce((s, r) => s + r.irmaaPartB + r.irmaaPartD, 0))}</td>
-                  <td>{fmt(allRows.reduce((s, r) => s + r.totalTax, 0))}</td>
+                  <td>{fmt(allRows.reduce((s, r) => s + displayAtAge(r.federalTax, r.age), 0))}</td>
+                  <td>{fmt(allRows.reduce((s, r) => s + displayAtAge(r.stateTax, r.age), 0))}</td>
+                  <td>{fmt(allRows.reduce((s, r) => s + displayAtAge(r.irmaaPartB + r.irmaaPartD, r.age), 0))}</td>
+                  <td>{fmt(allRows.reduce((s, r) => s + displayAtAge(r.totalTax, r.age), 0))}</td>
                   <td>—</td>
                   <td>—</td>
                 </tr>
@@ -1169,6 +1197,7 @@ const Main: React.FC<MainProps> = ({
       {activeTab === 'cashflow' && (
         <div className="chart-card">
           <div className="chart-title">Cash flow: income vs spending vs tax</div>
+          <DollarModeNote />
           <div className="legend">
             <span className="li"><span className="ls" style={{ background: '#27AE60' }}></span>Total income</span>
             <span className="li"><span className="ls" style={{ background: '#E74C3C' }}></span>Spending</span>
@@ -1190,7 +1219,7 @@ const Main: React.FC<MainProps> = ({
               </div>
               <div className="detail-item">
                 <div className="detail-label">Final portfolio value</div>
-                <div className="detail-value">{fmt(allRows[allRows.length - 1]?.total ?? 0)}</div>
+                <div className="detail-value">{allRows.length > 0 ? displayFmt(allRows[allRows.length - 1].total, allRows[allRows.length - 1].age) : fmt(0)}</div>
               </div>
               <div className="detail-item">
                 <div className="detail-label">Peak withdrawal rate</div>
@@ -1224,18 +1253,18 @@ const Main: React.FC<MainProps> = ({
                   return (
                     <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r, depleted ? { background: '#FFF5F5' } : undefined)}>
                       <td>{r.age}<SurvivorTag age={r.age} /></td>
-                      <td>{fmt(totalIn)}</td>
-                      <td>{fmt(r.totalSpending)}</td>
-                      <td>{fmt(r.totalTax)}</td>
-                      <td>{fmt(totalOut)}</td>
+                      <td>{displayFmt(totalIn, r.age)}</td>
+                      <td>{displayFmt(r.totalSpending, r.age)}</td>
+                      <td>{displayFmt(r.totalTax, r.age)}</td>
+                      <td>{displayFmt(totalOut, r.age)}</td>
                       <td style={{ color: net < -500 ? '#C0392B' : net > 500 ? '#1D9E75' : undefined, fontWeight: 500 }}>
-                        {net >= 0 ? '+' : ''}{fmt(net)}
+                        {net >= 0 ? '+' : ''}{displayFmt(net, r.age)}
                       </td>
                       <td style={{ color: r.withdrawalRate > 0.06 ? '#C0392B' : r.withdrawalRate > 0.04 ? '#BA7517' : undefined }}>
                         {r.portfolioValue > 0 ? pct(r.withdrawalRate) : '—'}
                       </td>
                       <td style={{ color: depleted ? '#C0392B' : undefined, fontWeight: depleted ? 600 : undefined }}>
-                        {fmt(r.portfolioValue)}
+                        {displayFmt(r.portfolioValue, r.age)}
                       </td>
                     </tr>
                   );

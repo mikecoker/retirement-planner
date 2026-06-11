@@ -121,6 +121,7 @@ interface SamplePlan extends StoredPlan {
 
 type MonteCarloPreset = 'base' | 'stress';
 type MonteCarloMethod = 'parametric' | 'historical';
+type DollarMode = 'nominal' | 'today';
 
 interface MonteCarloSettings {
   runs: number;
@@ -295,6 +296,7 @@ const App: React.FC = () => {
   const [rows, setRows] = useState<ProjectionRow[]>([]);
   const [planMenuOpen, setPlanMenuOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [dollarMode, setDollarMode] = useState<DollarMode>('nominal');
   const [metrics, setMetrics] = useState<{ m1: string; m2: string; m3: string; m4: string; m5: string }>({
     m1: '—', m2: '—', m3: '—', m4: '—', m5: '—',
   });
@@ -306,6 +308,10 @@ const App: React.FC = () => {
   const conversionSchedule = activePlan.conversionSchedule;
   const optMinStartAge = activePlan.optMinStartAge ?? inputs.age;
   const monteCarloSettings = { ...DEFAULT_MONTE_CARLO_SETTINGS, ...(activePlan.monteCarloSettings ?? {}) };
+  const displayAtAge = (value: number, age: number) =>
+    dollarMode === 'today'
+      ? value / Math.pow(1 + inputs.inf, Math.max(0, age - inputs.age))
+      : value;
   const accountsConfigured =
     (inputs.accounts?.length ?? 0) > 0 ||
     inputs.tradBal > 0 || inputs.rothBal > 0 || inputs.taxableBal > 0 || inputs.hsaBal > 0 ||
@@ -342,16 +348,16 @@ const App: React.FC = () => {
 
     const retireIn = Math.max(1, inputs.retireAge - inputs.age);
     const retireRow = projectionRows[retireIn] || projectionRows[projectionRows.length - 1];
-    const m1 = fmt(retireRow.total);
+    const m1 = fmt(displayAtAge(retireRow.total, retireRow.age));
 
     const allProjectionRows = projectionRows.slice(1);
-    const lifetimeTax = Math.round(allProjectionRows.reduce((s, r) => s + r.totalTax, 0));
+    const lifetimeTax = Math.round(allProjectionRows.reduce((s, r) => s + displayAtAge(r.totalTax, r.age), 0));
     const m2 = fmt(lifetimeTax);
-    const peakRmd = projectionRows.reduce((mx, r) => (r.rmd > mx ? r.rmd : mx), 0);
+    const peakRmd = projectionRows.reduce((mx, r) => Math.max(mx, displayAtAge(r.rmd, r.age)), 0);
     const m3 = peakRmd > 0 ? `${fmt(peakRmd)}/yr` : 'None';
 
     const lastRow = projectionRows[projectionRows.length - 1];
-    const m4 = lastRow ? fmt(lastRow.total) : '—';
+    const m4 = lastRow ? fmt(displayAtAge(lastRow.total, lastRow.age)) : '—';
 
     const m5 = `${runMonteCarlo(inputs, conversionSchedule, getMonteCarloOptions(
       monteCarloSettings.preset,
@@ -367,6 +373,7 @@ const App: React.FC = () => {
     setMetrics({ m1, m2, m3, m4, m5 });
   }, [
     inputs,
+    dollarMode,
     conversionSchedule,
     monteCarloSettings.preset,
     monteCarloSettings.runs,
@@ -533,7 +540,25 @@ const App: React.FC = () => {
   return (
     <div className="app">
       <div className="header">
-        <div />
+        <div className="dollar-mode" aria-label="Dollar display mode">
+          <span className="dollar-mode-label">Dollars</span>
+          <button
+            type="button"
+            className={dollarMode === 'nominal' ? 'active' : ''}
+            onClick={() => setDollarMode('nominal')}
+            title="Show projected future nominal dollars"
+          >
+            Future
+          </button>
+          <button
+            type="button"
+            className={dollarMode === 'today' ? 'active' : ''}
+            onClick={() => setDollarMode('today')}
+            title="Discount projected values back to today's dollars using the plan inflation rate"
+          >
+            Today's
+          </button>
+        </div>
         <div className="file-actions">
           <label className="file-import">
             <span className="file-icon">⇧</span>
@@ -678,6 +703,7 @@ const App: React.FC = () => {
         mcBlockSize={monteCarloSettings.blockSize}
         setMcBlockSize={blockSize => updateMonteCarloSettings({ blockSize })}
         getMonteCarloOptions={getMonteCarloOptions}
+        dollarMode={dollarMode}
       />
     </div>
   );
