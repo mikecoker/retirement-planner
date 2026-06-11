@@ -553,6 +553,14 @@ export function runProjection(
 
   const retireIn = Math.max(1, params.retireAge - params.age);
   const birthYear = inferredBirthYear(params);
+  const spendingPhaseMultiplier = (age: number): number => {
+    if (!params.spendingSmileEnabled || age < params.retireAge) return 1;
+    const lateAge = params.lateRetirementAge ?? 75;
+    const adjustment = age >= lateAge
+      ? (params.lateRetirementSpendingChange ?? 0)
+      : (params.earlyRetirementSpendingChange ?? 0);
+    return Math.max(0, 1 + adjustment);
+  };
   // Effective last age of the projection — extends past primary's lifeExp when spouse outlives them
   const projEndAge = Math.max(
     params.lifeExp,
@@ -871,9 +879,10 @@ export function runProjection(
         yearDiscExpense = Math.round(yearDiscExpense);
         yearLtcExpense = Math.round(baseLtcExpense * (healthcareInflationFactor / retireFactors.healthcareFactor));
       } else {
-        yearExpense = Math.round(baseExpense * (expenseInflationFactor / retireFactors.expenseFactor));
+        const spendingMultiplier = spendingPhaseMultiplier(age);
+        yearExpense = Math.round(baseExpense * (expenseInflationFactor / retireFactors.expenseFactor) * spendingMultiplier);
         yearHcExpense = Math.round(baseHcExpense * (healthcareInflationFactor / retireFactors.healthcareFactor));
-        yearDiscExpense = Math.round(baseDiscExpense * (cpiInflationFactor / retireFactors.inflationFactor));
+        yearDiscExpense = Math.round(baseDiscExpense * (cpiInflationFactor / retireFactors.inflationFactor) * spendingMultiplier);
         yearLtcExpense = Math.round(baseLtcExpense * (healthcareInflationFactor / retireFactors.healthcareFactor));
       }
       // Add one-time expenses this year

@@ -45,6 +45,10 @@ export interface InputParams {
   discretionaryExpenses: number;
   expenseInflationRate: number; // separate from general inflation
   healthcareInflationRate: number;
+  spendingSmileEnabled?: boolean;
+  earlyRetirementSpendingChange?: number; // decimal adjustment to base/discretionary spending before lateRetirementAge
+  lateRetirementSpendingChange?: number;  // decimal adjustment to base/discretionary spending from lateRetirementAge onward
+  lateRetirementAge?: number;
 
   // Income during working years
   salary?: number; // annual gross wages — used to compute bracket headroom for pre-retirement conversions

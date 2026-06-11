@@ -45,6 +45,7 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
   const items = inputs.expenseItems ?? [];
   const hasItems = items.length > 0;
   const [subTab, setSubTab] = useState<'basic' | 'advanced'>(() => hasItems ? 'advanced' : 'basic');
+  const [basicDrafts, setBasicDrafts] = useState<Record<string, string>>({});
 
   const { age, retireAge, lifeExp, expenseInflationRate, healthcareInflationRate, inf } = inputs;
 
@@ -127,6 +128,25 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
     padding: '4px 9px', fontSize: '11px', background: color, color: '#fff',
     border: 'none', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
   });
+  const draftValue = (key: string, value: number) => basicDrafts[key] ?? String(value);
+  const updatePercentDraft = (key: keyof InputParams, raw: string) => {
+    setBasicDrafts(prev => ({ ...prev, [key]: raw }));
+    if (raw === '' || raw === '-' || raw === '.' || raw === '-.') return;
+    const value = Number(raw);
+    if (Number.isFinite(value)) onInputChange(key, value / 100);
+  };
+  const updateNumberDraft = (key: keyof InputParams, raw: string, fallback: number) => {
+    setBasicDrafts(prev => ({ ...prev, [key]: raw }));
+    if (raw === '') return;
+    const value = Number(raw);
+    if (Number.isFinite(value)) onInputChange(key, value || fallback);
+  };
+  const finishBasicDraft = (key: keyof InputParams) => {
+    setBasicDrafts(prev => {
+      const { [key]: _discard, ...rest } = prev;
+      return rest;
+    });
+  };
 
   const renderBasic = () => {
     const disabled = hasItems;
@@ -163,6 +183,76 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
             <TipLabel text="LTC reserve ($/mo, from age 80)" />
             <input type="number" value={inputs.ltcExpenses} step={100} style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '3px', width: '100%' }}
               onInput={(e) => onInputChange('ltcExpenses', Number((e.target as HTMLInputElement).value) || 0)} />
+          </div>
+
+          <div className="detail-section-title" style={{ marginTop: '1.2rem' }}>Spending Changes</div>
+          <div className="field">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                checked={inputs.spendingSmileEnabled ?? false}
+                onChange={(e) => onInputChange('spendingSmileEnabled', e.target.checked)}
+              />
+              <TipLabel text="Retirement spending smile" />
+            </div>
+          </div>
+          <div style={{ opacity: inputs.spendingSmileEnabled ? 1 : 0.45 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+              <button
+                type="button"
+                style={btnStyle('#1A5276')}
+                onClick={() => {
+                  onInputChange('spendingSmileEnabled', true);
+                  onInputChange('earlyRetirementSpendingChange', 0.10);
+                  onInputChange('lateRetirementAge', 75);
+                  onInputChange('lateRetirementSpendingChange', -0.10);
+                  setBasicDrafts(prev => {
+                    const { earlyRetirementSpendingChange: _early, lateRetirementAge: _age, lateRetirementSpendingChange: _late, ...rest } = prev;
+                    return rest;
+                  });
+                }}
+              >
+                Use spending smile
+              </button>
+            </div>
+            <div className="two-col">
+              <div className="field">
+                <TipLabel text="Early retirement change (%)" />
+                <input
+                  type="number"
+                  value={draftValue('earlyRetirementSpendingChange', (inputs.earlyRetirementSpendingChange ?? 0.10) * 100)}
+                  step={1}
+                  disabled={!inputs.spendingSmileEnabled}
+                  style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '3px', width: '100%' }}
+                  onInput={(e) => updatePercentDraft('earlyRetirementSpendingChange', (e.target as HTMLInputElement).value)}
+                  onBlur={() => finishBasicDraft('earlyRetirementSpendingChange')}
+                />
+              </div>
+              <div className="field">
+                <TipLabel text="Late retirement age" />
+                <input
+                  type="number"
+                  value={draftValue('lateRetirementAge', inputs.lateRetirementAge ?? 75)}
+                  step={1}
+                  disabled={!inputs.spendingSmileEnabled}
+                  style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '3px', width: '100%' }}
+                  onInput={(e) => updateNumberDraft('lateRetirementAge', (e.target as HTMLInputElement).value, 75)}
+                  onBlur={() => finishBasicDraft('lateRetirementAge')}
+                />
+              </div>
+            </div>
+            <div className="field">
+              <TipLabel text="Late retirement change (%)" />
+              <input
+                type="number"
+                value={draftValue('lateRetirementSpendingChange', (inputs.lateRetirementSpendingChange ?? -0.10) * 100)}
+                step={1}
+                disabled={!inputs.spendingSmileEnabled}
+                style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '3px', width: '100%' }}
+                onInput={(e) => updatePercentDraft('lateRetirementSpendingChange', (e.target as HTMLInputElement).value)}
+                onBlur={() => finishBasicDraft('lateRetirementSpendingChange')}
+              />
+            </div>
           </div>
 
           <div className="detail-section-title" style={{ marginTop: '1.2rem' }}>Inflation Rates</div>

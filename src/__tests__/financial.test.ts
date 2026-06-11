@@ -675,6 +675,71 @@ describe('runProjection', () => {
     expect(age66.federalTax).toBe(estimateTax(age66.ordinaryIncome, 'single', 1, taxInflFactor(tradOnly, 66)));
   });
 
+  it('applies retirement spending smile adjustments to basic ordinary and discretionary spending', () => {
+    const smile = {
+      ...BASE,
+      age: 65,
+      retireAge: 65,
+      lifeExp: 70,
+      tradBal: 0,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      ss: 0,
+      expenses: 1000,
+      healthcareExpenses: 200,
+      discretionaryExpenses: 500,
+      ltcExpenses: 0,
+      expenseInflationRate: 0,
+      healthcareInflationRate: 0,
+      inf: 0,
+      spendingSmileEnabled: true,
+      earlyRetirementSpendingChange: 0.20,
+      lateRetirementAge: 70,
+      lateRetirementSpendingChange: -0.25,
+    };
+    const rows = runProjection(smile, 0);
+
+    const early = rows.find(r => r.age === 66)!;
+    expect(early.expenses).toBe(14400);
+    expect(early.discretionaryExpenses).toBe(7200);
+    expect(early.healthcareExpenses).toBe(2400);
+
+    const late = rows.find(r => r.age === 70)!;
+    expect(late.expenses).toBe(9000);
+    expect(late.discretionaryExpenses).toBe(4500);
+    expect(late.healthcareExpenses).toBe(2400);
+  });
+
+  it('does not apply basic spending smile adjustments to advanced expense items', () => {
+    const advanced = {
+      ...BASE,
+      age: 65,
+      retireAge: 65,
+      lifeExp: 66,
+      tradBal: 0,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      ss: 0,
+      expenses: 1000,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      expenseInflationRate: 0,
+      healthcareInflationRate: 0,
+      inf: 0,
+      spendingSmileEnabled: true,
+      earlyRetirementSpendingChange: 0.50,
+      expenseItems: [
+        { id: 'rent', name: 'Rent', category: 'housing' as const, monthly: 1000, inflationType: 'fixed' as const, startAge: 65 },
+      ],
+    };
+    const rows = runProjection(advanced, 0);
+
+    expect(rows.find(r => r.age === 66)?.expenses).toBe(12000);
+  });
+
   it('switches to survivor treatment after primary life expectancy', () => {
     const survivor = {
       ...BASE,

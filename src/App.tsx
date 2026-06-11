@@ -56,6 +56,10 @@ const DEFAULTS: InputParams = {
   discretionaryExpenses: 0,
   expenseInflationRate: 0.03,
   healthcareInflationRate: 0.055,
+  spendingSmileEnabled: false,
+  earlyRetirementSpendingChange: 0.10,
+  lateRetirementSpendingChange: -0.10,
+  lateRetirementAge: 75,
 
   // Income during working years
   salary: undefined,
@@ -320,7 +324,8 @@ const App: React.FC = () => {
   const expensesConfigured =
     (inputs.expenseItems?.length ?? 0) > 0 ||
     inputs.expenses > 0 || inputs.healthcareExpenses > 0 ||
-    inputs.discretionaryExpenses > 0 || inputs.ltcExpenses > 0;
+    inputs.discretionaryExpenses > 0 || inputs.ltcExpenses > 0 ||
+    (inputs.spendingSmileEnabled ?? false);
   const navItems: NavItem[] = [
     { key: 'about', label: 'About You', section: 'SETUP', configured: true },
     { key: 'social', label: 'Social Security', section: 'SETUP', configured: inputs.ss > 0 || !!inputs.ss62 || !!inputs.ss67 || !!inputs.ss70 },
