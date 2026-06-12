@@ -23,6 +23,8 @@ The model tracks:
 
 Traditional withdrawals and Roth conversions are generally taxable as ordinary income. Roth withdrawals are modeled as tax-free. Taxable accounts can generate ordinary yield, qualified dividends, and long-term capital gains depending on settings.
 
+Advanced account entries can be assigned to you, your spouse, or jointly. Investment balances are still modeled as household assets for withdrawal purposes. Guaranteed income sources use ownership directly: start and end ages are interpreted as the owner's age, owner-specific income stops when that owner dies, and survivor pension/annuity benefits continue only when a survivor benefit is configured.
+
 ## Withdrawal Order
 
 The projection draws from accounts according to the app's internal withdrawal logic. Review `src/financial.ts` for exact implementation. Important outputs to inspect are taxable depletion, traditional withdrawals, Roth withdrawals, and HSA withdrawals.

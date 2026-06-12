@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { InputParams, Account, AccountType } from '../types';
+import type { InputParams, Account, AccountOwner, AccountType, SurvivorBenefitType } from '../types';
 import { computeGuaranteedIncome } from '../financial';
 import TipLabel from './TipLabel';
 
@@ -20,6 +20,16 @@ const TYPE_LABELS: Record<AccountType, string> = {
   annuity: 'Annuity',
   pension: 'Pension',
   bond_tips: 'Bond/TIPS',
+};
+const OWNER_LABELS: Record<AccountOwner, string> = {
+  primary: 'You',
+  spouse: 'Spouse',
+  joint: 'Joint',
+};
+const SURVIVOR_LABELS: Record<SurvivorBenefitType, string> = {
+  none: 'None',
+  percent: 'Percent',
+  fixed: 'Fixed $',
 };
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -80,6 +90,7 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
     id: newId(),
     name: 'New Account',
     type: 'traditional' as AccountType,
+    owner: 'primary',
     balance: 0,
     growthRate: inputs.r,
   }]);
@@ -88,9 +99,11 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
     id: newId(),
     name: 'New Income Source',
     type: 'pension' as AccountType,
+    owner: 'primary',
     balance: 0,
     monthlyIncome: 0,
     incomeStartAge: inputs.retireAge,
+    survivorBenefitType: 'none',
     inflationAdjusted: false,
   }]);
   const formatGrowthRate = (acct: Account) =>
@@ -279,6 +292,7 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
               <tr>
                 <th style={{ minWidth: 130 }}>Name</th>
                 <th>Type</th>
+                <th>Owner</th>
                 <th>Balance ($)</th>
                 <th>Annual Contrib ($)</th>
                 <th>Growth (%)</th>
@@ -302,6 +316,16 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
                       }}
                     >
                       {INVESTMENT_TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      style={{ ...inputStyle, minWidth: 88 }}
+                      value={acct.owner ?? 'primary'}
+                      onChange={e => update(acct.id, { owner: e.target.value as AccountOwner })}
+                    >
+                      {(inputs.filingStatus === 'married' ? (['primary', 'spouse', 'joint'] as AccountOwner[]) : (['primary'] as AccountOwner[]))
+                        .map(owner => <option key={owner} value={owner}>{OWNER_LABELS[owner]}</option>)}
                     </select>
                   </td>
                   <td>
@@ -379,9 +403,12 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
               <tr>
                 <th style={{ minWidth: 130 }}>Name</th>
                 <th>Type</th>
+                <th>Owner</th>
                 <th>Monthly ($)</th>
                 <th>Start Age</th>
                 <th>End Age</th>
+                <th>Survivor</th>
+                <th>Survivor Amt</th>
                 <th>COLA</th>
                 <th>Rate (%)</th>
                 <th></th>
@@ -399,6 +426,16 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
                     </select>
                   </td>
                   <td>
+                    <select
+                      style={{ ...inputStyle, minWidth: 88 }}
+                      value={acct.owner ?? 'primary'}
+                      onChange={e => update(acct.id, { owner: e.target.value as AccountOwner })}
+                    >
+                      {(inputs.filingStatus === 'married' ? (['primary', 'spouse', 'joint'] as AccountOwner[]) : (['primary'] as AccountOwner[]))
+                        .map(owner => <option key={owner} value={owner}>{OWNER_LABELS[owner]}</option>)}
+                    </select>
+                  </td>
+                  <td>
                     <input style={inputStyle} type="number" value={acct.monthlyIncome || ''} step={100} placeholder="0"
                       onChange={e => update(acct.id, { monthlyIncome: Number(e.target.value) || 0 })} />
                   </td>
@@ -409,8 +446,40 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
                   </td>
                   <td>
                     <input style={{ ...inputStyle, width: 52 }} type="number" value={acct.incomeEndAge ?? ''}
-                      placeholder={String(inputs.lifeExp)}
+                      placeholder={String((acct.owner ?? 'primary') === 'spouse' ? (inputs.spouseLifeExp ?? inputs.lifeExp) : inputs.lifeExp)}
                       onChange={e => update(acct.id, { incomeEndAge: Number(e.target.value) || undefined })} />
+                  </td>
+                  <td>
+                    {(acct.owner ?? 'primary') === 'joint' ? (
+                      <span style={{ fontSize: '11px', color: '#aaa' }}>—</span>
+                    ) : (
+                      <select
+                        style={{ ...inputStyle, minWidth: 92 }}
+                        value={acct.survivorBenefitType ?? 'none'}
+                        onChange={e => update(acct.id, { survivorBenefitType: e.target.value as SurvivorBenefitType })}
+                      >
+                        {(Object.keys(SURVIVOR_LABELS) as SurvivorBenefitType[]).map(type => (
+                          <option key={type} value={type}>{SURVIVOR_LABELS[type]}</option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                  <td>
+                    {acct.survivorBenefitType === 'percent' ? (
+                      <input style={{ ...inputStyle, width: 68 }} type="number"
+                        value={acct.survivorPercent !== undefined ? (acct.survivorPercent * 100).toFixed(0) : ''}
+                        step={5}
+                        placeholder="50"
+                        onChange={e => update(acct.id, { survivorPercent: Number(e.target.value) / 100 || undefined })} />
+                    ) : acct.survivorBenefitType === 'fixed' ? (
+                      <input style={{ ...inputStyle, width: 86 }} type="number"
+                        value={acct.survivorMonthlyIncome ?? ''}
+                        step={100}
+                        placeholder="0"
+                        onChange={e => update(acct.id, { survivorMonthlyIncome: Number(e.target.value) || undefined })} />
+                    ) : (
+                      <span style={{ fontSize: '11px', color: '#aaa' }}>—</span>
+                    )}
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <input type="checkbox" checked={acct.inflationAdjusted ?? false}

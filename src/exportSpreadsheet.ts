@@ -108,6 +108,46 @@ function balancesSheet(rows: ProjectionRow[]): XLSX.WorkSheet {
   return ws;
 }
 
+function accountsSheet(inputs: InputParams): XLSX.WorkSheet {
+  const header = [
+    'Name',
+    'Type',
+    'Owner',
+    'Balance ($)',
+    'Cost Basis ($)',
+    'Annual Contribution ($)',
+    'Growth Rate (%)',
+    'Monthly Income ($)',
+    'Income Start Age',
+    'Income End Age',
+    'Survivor Benefit',
+    'Survivor Percent (%)',
+    'Survivor Monthly ($)',
+    'COLA',
+    'COLA Rate (%)',
+  ];
+  const data = (inputs.accounts ?? []).map(account => [
+    account.name,
+    account.type,
+    account.owner ?? 'primary',
+    dollar(account.balance),
+    account.costBasis !== undefined ? dollar(account.costBasis) : '',
+    account.annualContrib !== undefined ? dollar(account.annualContrib) : '',
+    account.growthRate !== undefined ? pct(account.growthRate) : '',
+    account.monthlyIncome !== undefined ? dollar(account.monthlyIncome) : '',
+    account.incomeStartAge ?? '',
+    account.incomeEndAge ?? '',
+    account.survivorBenefitType ?? '',
+    account.survivorPercent !== undefined ? pct(account.survivorPercent) : '',
+    account.survivorMonthlyIncome !== undefined ? dollar(account.survivorMonthlyIncome) : '',
+    account.inflationAdjusted ?? '',
+    account.inflationRate !== undefined ? pct(account.inflationRate) : '',
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+  ws['!cols'] = header.map((h) => ({ wch: Math.max(h.length, 12) + 2 }));
+  return ws;
+}
+
 function incomeSheet(rows: ProjectionRow[], inputs: InputParams): XLSX.WorkSheet {
   const header = [
     'Age',
@@ -254,6 +294,7 @@ export function exportToSpreadsheet(inputs: InputParams, allRows: ProjectionRow[
   const dataRows = allRows.slice(1); // skip y=0 initial state, match UI behaviour
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, inputsSheet(inputs), 'Inputs');
+  if ((inputs.accounts?.length ?? 0) > 0) XLSX.utils.book_append_sheet(wb, accountsSheet(inputs), 'Accounts');
   XLSX.utils.book_append_sheet(wb, balancesSheet(allRows), 'Balances'); // keep initial state for balances
   XLSX.utils.book_append_sheet(wb, incomeSheet(dataRows, inputs), 'Income');
   XLSX.utils.book_append_sheet(wb, rmdsSheet(dataRows), 'RMDs & Conversions');

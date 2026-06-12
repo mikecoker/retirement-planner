@@ -437,17 +437,69 @@ export function spouseSsAt(params: InputParams, age: number): number {
 export function computeGuaranteedIncome(params: InputParams, age: number): number {
   if (!params.accounts) return 0;
   let total = 0;
+  const projectionYear = age - params.age;
+  const spouseAge = params.spouseAge !== undefined ? params.spouseAge + projectionYear : undefined;
+  const primaryAlive = age <= params.lifeExp;
+  const spouseAlive = params.spouseAge !== undefined && (!params.spouseLifeExp || (spouseAge ?? 0) <= params.spouseLifeExp);
+  const projEnd = Math.max(
+    params.lifeExp,
+    (params.spouseLifeExp && params.spouseAge)
+      ? params.age + (params.spouseLifeExp - params.spouseAge)
+      : 0,
+  );
+
   for (const acct of params.accounts) {
     if (acct.type !== 'annuity' && acct.type !== 'pension' && acct.type !== 'bond_tips') continue;
     if (!acct.monthlyIncome) continue;
-    const startAge = acct.incomeStartAge ?? params.retireAge;
-    const projEnd = Math.max(params.lifeExp, (params.spouseLifeExp && params.spouseAge) ? params.age + (params.spouseLifeExp - params.spouseAge) : 0);
-    const endAge = acct.incomeEndAge ?? projEnd;
-    if (age < startAge || age > endAge) continue;
+    const owner = acct.owner ?? 'primary';
+    const ownerAge = owner === 'spouse' ? spouseAge : age;
+    const ownerAlive = owner === 'joint'
+      ? (primaryAlive || spouseAlive)
+      : owner === 'spouse'
+        ? spouseAlive
+        : primaryAlive;
+    const survivorAlive = owner === 'primary'
+      ? spouseAlive
+      : owner === 'spouse'
+        ? primaryAlive
+        : false;
+    const startAge = acct.incomeStartAge ?? (owner === 'spouse' && params.spouseAge !== undefined ? params.spouseAge : params.retireAge);
+    const defaultEndAge = owner === 'joint'
+      ? projEnd
+      : owner === 'spouse'
+        ? (params.spouseLifeExp ?? projEnd)
+        : params.lifeExp;
+    const endAge = acct.incomeEndAge ?? defaultEndAge;
+    const ownerDeathAge = owner === 'spouse' ? params.spouseLifeExp : params.lifeExp;
+    const ownerBenefitEligible = ownerAge !== undefined && ownerAge >= startAge && ownerAge <= endAge;
+    const survivorBenefitEligible = owner !== 'joint'
+      && survivorAlive
+      && ownerDeathAge !== undefined
+      && ownerDeathAge >= startAge
+      && ownerDeathAge <= endAge;
+    if (ownerAlive ? !ownerBenefitEligible : !survivorBenefitEligible) continue;
+    const incomeAge = ownerAge ?? age;
+
     let annual = acct.monthlyIncome * 12;
     if (acct.inflationAdjusted) {
       const rate = acct.inflationRate ?? params.inf;
-      annual *= Math.pow(1 + rate, age - startAge);
+      annual *= Math.pow(1 + rate, incomeAge - startAge);
+    }
+
+    if (!ownerAlive) {
+      if (!survivorAlive) continue;
+      const survivorType = acct.survivorBenefitType ?? 'none';
+      if (survivorType === 'percent') {
+        annual *= acct.survivorPercent ?? 0;
+      } else if (survivorType === 'fixed') {
+        annual = (acct.survivorMonthlyIncome ?? 0) * 12;
+        if (acct.inflationAdjusted) {
+          const rate = acct.inflationRate ?? params.inf;
+          annual *= Math.pow(1 + rate, incomeAge - startAge);
+        }
+      } else {
+        continue;
+      }
     }
     total += annual;
   }

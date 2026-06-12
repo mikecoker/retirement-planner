@@ -579,6 +579,98 @@ describe('runProjection', () => {
     expect(age66.irmaaPartD).toBe(Math.round(91.00 * 12 * taxInflFactor(highMagi, 66)));
   });
 
+  it('stops primary-owned pension income during spouse-only survivor years by default', () => {
+    const params = {
+      ...BASE,
+      age: 63,
+      retireAge: 64,
+      lifeExp: 65,
+      spouseAge: 63,
+      spouseLifeExp: 70,
+      ss: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      accounts: [{
+        id: 'primary-pension',
+        name: 'Primary pension',
+        type: 'pension' as const,
+        owner: 'primary' as const,
+        balance: 0,
+        monthlyIncome: 5000,
+        incomeStartAge: 64,
+      }],
+    };
+
+    const rows = runProjection(params, 0);
+    expect(rows.find(r => r.age === 64)?.pension).toBe(60000);
+    expect(rows.find(r => r.age === 65)?.pension).toBe(60000);
+    expect(rows.find(r => r.age === 66)?.pension).toBe(0);
+  });
+
+  it('continues percentage survivor pension income after the owner dies', () => {
+    const params = {
+      ...BASE,
+      age: 63,
+      retireAge: 64,
+      lifeExp: 65,
+      spouseAge: 63,
+      spouseLifeExp: 70,
+      ss: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      accounts: [{
+        id: 'primary-pension',
+        name: 'Primary pension',
+        type: 'pension' as const,
+        owner: 'primary' as const,
+        balance: 0,
+        monthlyIncome: 5000,
+        incomeStartAge: 64,
+        survivorBenefitType: 'percent' as const,
+        survivorPercent: 0.5,
+      }],
+    };
+
+    const rows = runProjection(params, 0);
+    expect(rows.find(r => r.age === 65)?.pension).toBe(60000);
+    expect(rows.find(r => r.age === 66)?.pension).toBe(30000);
+    expect(rows.find(r => r.age === 70)?.pension).toBe(30000);
+  });
+
+  it('stops spouse-owned pension income when the spouse dies before the primary', () => {
+    const params = {
+      ...BASE,
+      age: 63,
+      retireAge: 64,
+      lifeExp: 70,
+      spouseAge: 63,
+      spouseLifeExp: 65,
+      ss: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      accounts: [{
+        id: 'spouse-pension',
+        name: 'Spouse pension',
+        type: 'pension' as const,
+        owner: 'spouse' as const,
+        balance: 0,
+        monthlyIncome: 4000,
+        incomeStartAge: 64,
+      }],
+    };
+
+    const rows = runProjection(params, 0);
+    expect(rows.find(r => r.age === 64)?.pension).toBe(48000);
+    expect(rows.find(r => r.age === 65)?.pension).toBe(48000);
+    expect(rows.find(r => r.age === 66)?.pension).toBe(0);
+  });
+
   it('Roth conversions only occur within the specified window', () => {
     const rows = runProjection(BASE, BASE.r);
     const retireRows = rows.filter(r => r.age >= BASE.retireAge);

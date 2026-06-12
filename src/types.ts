@@ -96,11 +96,14 @@ export interface InputParams {
 }
 
 export type AccountType = 'traditional' | 'roth' | 'taxable' | 'hsa' | 'annuity' | 'pension' | 'bond_tips';
+export type AccountOwner = 'primary' | 'spouse' | 'joint';
+export type SurvivorBenefitType = 'none' | 'percent' | 'fixed';
 
 export interface Account {
   id: string;
   name: string;
   type: AccountType;
+  owner?: AccountOwner;      // default: primary
   balance: number;
   costBasis?: number;        // taxable accounts only
   annualContrib?: number;    // pre-retirement annual contribution
@@ -111,6 +114,9 @@ export interface Account {
   monthlyIncome?: number;    // in today's dollars at incomeStartAge
   incomeStartAge?: number;   // default: params.retireAge
   incomeEndAge?: number;     // default: params.lifeExp (undefined = for life)
+  survivorBenefitType?: SurvivorBenefitType; // pension/annuity survivor income after owner dies
+  survivorPercent?: number;  // decimal e.g. 0.5 = 50% survivor benefit
+  survivorMonthlyIncome?: number; // fixed monthly survivor benefit in today's dollars
   inflationAdjusted?: boolean;
   inflationRate?: number;    // default: params.inf
 }

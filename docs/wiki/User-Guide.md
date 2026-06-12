@@ -73,7 +73,7 @@ Basic mode is useful when you want a quick projection:
 - Contributions.
 - Return assumptions.
 
-Advanced mode is useful when you want more granular accounts, custom return assumptions, or guaranteed income streams.
+Advanced mode is useful when you want more granular accounts, custom return assumptions, or guaranteed income streams. Investment accounts and guaranteed income sources can be marked as owned by you, your spouse, or jointly. Guaranteed income sources such as pensions can also define whether a survivor receives no benefit, a percentage benefit, or a fixed monthly benefit after the owner dies.
 
 Use realistic return assumptions. Small changes in long-term returns can dominate results over multi-decade projections.
 
