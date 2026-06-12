@@ -1515,198 +1515,12 @@ const Main: React.FC<MainProps> = ({
                   <div className="optimizer-savings">{savingsText}</div>
                 </div>
 
-                {/* Comparison table */}
-                <div className="optimizer-table-wrap">
-                  <table className="optimizer-table">
-                    <thead>
-                      <tr>
-                        <th>Strategy</th>
-                        <th>Lifetime Tax</th>
-                        <th>IRMAA</th>
-                        <th>Peak Marginal</th>
-                        <th>Terminal Trad</th>
-                        <th>Terminal Roth</th>
-                        <th>Terminal Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {optimization.strategies.map((s, i) => {
-                        const isBest = s.strategy.name === activeBest.strategy.name;
-                        const isBaseline = s.strategy.name === optimization.baseline.strategy.name;
-                        const isCurrent = s.strategy.name === 'Your current settings';
-                        return (
-                          <tr key={i} className={isBest ? 'opt-row-best' : isBaseline ? 'opt-row-baseline' : isCurrent ? 'opt-row-current' : ''}>
-                            <td>
-                              {isBest && <span className="opt-badge-best">BEST</span>}
-                              {isBaseline && <span className="opt-badge-base">BASE</span>}
-                              {isCurrent && <span className="opt-badge-current">YOU</span>}
-                              {' '}{s.strategy.name}
-                            </td>
-                            <td>{fmt(s.lifetimeTotalTax)}</td>
-                            <td>{fmt(s.lifetimeIRMAA)}</td>
-                            <td>{pct(s.peakMarginalRate)}</td>
-                            <td>{fmt(s.terminalTrad)}</td>
-                            <td>{fmt(s.terminalRoth)}</td>
-                            <td>{fmt(s.terminalTotal)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Start age analysis */}
-                {optimization.startAgeAnalysis.length > 0 && (() => {
-                  const BRACKET_LABELS = ['10%', '12%', '22%', '24%'];
-                  const metricLabel = (m: import('../optimizer').StartAgeMetric) =>
-                    `${BRACKET_LABELS[m.bracket]} / until ${m.untilAge}`;
-                  const visibleRows = optimization.startAgeAnalysis.filter(r => r.convStart >= optMinStartAge);
-                  // Only rows that would show a real value (not "—") are eligible for BEST
-                  const eligibleForGoal = visibleRows.filter(r => {
-                    const preRet = r.convStart < inputs.retireAge;
-                    if (optimizerGoal === 'portfolio') return !preRet || r.bestTerminal.hasPreRetirementConv;
-                    if (optimizerGoal === 'peakrate') return !preRet || r.bestPeak.hasPreRetirementConv;
-                    return !preRet || r.bestTax.hasPreRetirementConv;
-                  });
-                  const bestRowForGoal = eligibleForGoal.length === 0 ? null : eligibleForGoal.reduce((best, r) => {
-                    if (optimizerGoal === 'portfolio') return r.bestTerminal.terminalTotal > best.bestTerminal.terminalTotal ? r : best;
-                    if (optimizerGoal === 'peakrate') return r.bestPeak.peakMarginalRate < best.bestPeak.peakMarginalRate ? r : best;
-                    return r.bestTax.lifetimeTotalTax < best.bestTax.lifetimeTotalTax ? r : best;
-                  }, eligibleForGoal[0]);
-
-                  const goalSchedule = (row: typeof visibleRows[0]) =>
-                    optimizerGoal === 'portfolio' ? row.bestTerminal.schedule
-                    : optimizerGoal === 'peakrate' ? row.bestPeak.schedule
-                    : row.bestTax.schedule;
-
-                  return (
-                    <>
-                      <div className="chart-subtitle" style={{ marginTop: '1.5rem' }}>Conversion start age analysis</div>
-                      <div className="note" style={{ marginBottom: '0.5rem' }}>
-                        Each row tests all 4 brackets × 4 until-ages (16 combos) and shows the independently optimized best for each metric. Apply uses the schedule matching your current goal.
-                      </div>
-                      <div className="optimizer-table-wrap">
-                        <table className="optimizer-table opt-schedule-table">
-                          <thead>
-                            <tr>
-                              <th>Start Age</th>
-                              <th>Best Lifetime Tax</th>
-                              <th>Tax Savings</th>
-                              <th>Best Terminal</th>
-                              <th>Best Peak Rate</th>
-                              <th>Lowest IRMAA</th>
-                              <th></th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {visibleRows.map(row => {
-                              const isCurrentStart = row.convStart === (inputs.convStart ?? inputs.retireAge);
-                              const isBest = row === bestRowForGoal;
-                              const sched = goalSchedule(row);
-                              const activeMetric = optimizerGoal === 'portfolio' ? row.bestTerminal
-                                : optimizerGoal === 'peakrate' ? row.bestPeak
-                                : row.bestTax;
-                              const isApplied = conversionSchedule && JSON.stringify(conversionSchedule) === JSON.stringify(sched);
-                              const preRet = row.convStart < inputs.retireAge;
-                              // Show Apply when: schedule is non-empty AND (post-retirement OR the active metric has actual pre-retirement conversions)
-                              const canApply = Object.keys(sched).length > 0 && (!preRet || activeMetric.hasPreRetirementConv);
-                              const cell = (m: import('../optimizer').StartAgeMetric, content: React.ReactNode) =>
-                                preRet && !m.hasPreRetirementConv
-                                  ? <td style={{ color: '#bbb' }}>—</td>
-                                  : <td>{content}</td>;
-                              return (
-                                <tr key={row.convStart} className={isBest ? 'opt-row-best' : isCurrentStart ? 'opt-row-current' : ''}>
-                                  <td>
-                                    {isBest && <span className="opt-badge-best">BEST</span>}
-                                    {isCurrentStart && !isBest && <span className="opt-badge-current">YOU</span>}
-                                    {' '}{row.convStart}
-                                  </td>
-                                  {cell(row.bestTax, <>
-                                    {fmt(row.bestTax.lifetimeTotalTax)}
-                                    <div style={{ fontSize: '10px', color: '#888', marginTop: '1px' }}>{metricLabel(row.bestTax)}</div>
-                                  </>)}
-                                  {cell(row.bestTax, <span style={{ color: row.bestTax.savings > 0 ? '#1D9E75' : '#C0392B', fontWeight: 600 }}>
-                                    {row.bestTax.savings > 0 ? '+' : ''}{fmt(row.bestTax.savings)}
-                                  </span>)}
-                                  {cell(row.bestTerminal, <>
-                                    {fmt(row.bestTerminal.terminalTotal)}
-                                    <div style={{ fontSize: '10px', color: '#888', marginTop: '1px' }}>{metricLabel(row.bestTerminal)}</div>
-                                  </>)}
-                                  {cell(row.bestPeak, <>
-                                    {pct(row.bestPeak.peakMarginalRate)}
-                                    <div style={{ fontSize: '10px', color: '#888', marginTop: '1px' }}>{metricLabel(row.bestPeak)}</div>
-                                  </>)}
-                                  {cell(row.bestIrmaa, <>
-                                    {fmt(row.bestIrmaa.lifetimeIRMAA)}
-                                    <div style={{ fontSize: '10px', color: '#888', marginTop: '1px' }}>{metricLabel(row.bestIrmaa)}</div>
-                                  </>)}
-                                  <td>
-                                    {isApplied ? (
-                                      <button onClick={onClearSchedule} style={{ fontSize: '10px', padding: '2px 6px', background: '#E74C3C', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
-                                        Reset
-                                      </button>
-                                    ) : canApply ? (
-                                      <button onClick={() => onApplySchedule(sched)} style={{ fontSize: '10px', padding: '2px 6px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
-                                        Apply
-                                      </button>
-                                    ) : null}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </>
-                  );
-                })()}
-
-                {/* Comparison chart — metric adapts to goal */}
-                <div className="chart-subtitle">{chartMetric.label} by strategy</div>
-                <div style={{ position: 'relative', width: '100%', height: '200px' }}>
-                  <Bar
-                    data={{
-                      labels: optimization.strategies.map(s => s.strategy.name),
-                      datasets: [{
-                        label: chartMetric.label,
-                        data: optimization.strategies.map(s => s[chartMetric.key]),
-                        backgroundColor: optimization.strategies.map(s =>
-                          s.strategy.name === activeBest.strategy.name
-                            ? '#1D9E75'
-                            : s.strategy.name === optimization.baseline.strategy.name
-                              ? '#E74C3C'
-                              : s.strategy.name === 'Your current settings'
-                                ? '#3498DB'
-                                : '#378ADD'
-                        ),
-                      }],
-                    }}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      animation: false,
-                      indexAxis: 'y',
-                      plugins: {
-                        legend: { display: false },
-                        tooltip: { callbacks: { label: (ctx: any) => fmt(ctx.parsed.x) } },
-                      },
-                      scales: {
-                        x: {
-                          ticks: { callback: (v: number | string) => fmt(Number(v)), font: { size: 10 } },
-                          grid: { color: 'rgba(128,128,128,0.1)' },
-                        },
-                        y: { ticks: { font: { size: 10 } }, grid: { display: false } },
-                      },
-                    } as any}
-                  />
-                </div>
-
                 {/* Year-by-year conversion schedule for active strategy */}
                 <div className="chart-subtitle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span>Recommended conversion schedule</span>
                   {conversionSchedule ? (
                     <span style={{ fontSize: '11px', color: '#27AE60', fontWeight: 600 }}>
-                      ✓ Applied to projection —{' '}
+                      Applied to projection —{' '}
                       <button onClick={onClearSchedule} style={{ background: 'none', border: 'none', color: '#E74C3C', cursor: 'pointer', fontSize: '11px', padding: 0, fontWeight: 600 }}>
                         Reset to sidebar
                       </button>
@@ -1753,6 +1567,189 @@ const Main: React.FC<MainProps> = ({
                     </table>
                   </div>
                 )}
+
+                {/* Comparison table */}
+                <CollapsibleTableSection id="optimizer-strategies" title="Strategy comparison" meta={`${optimization.strategies.length} strategies`}>
+                  <table className="optimizer-table">
+                    <thead>
+                      <tr>
+                        <th>Strategy</th>
+                        <th>Lifetime Tax</th>
+                        <th>IRMAA</th>
+                        <th>Peak Marginal</th>
+                        <th>Terminal Trad</th>
+                        <th>Terminal Roth</th>
+                        <th>Terminal Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {optimization.strategies.map((s, i) => {
+                        const isBest = s.strategy.name === activeBest.strategy.name;
+                        const isBaseline = s.strategy.name === optimization.baseline.strategy.name;
+                        const isCurrent = s.strategy.name === 'Your current settings';
+                        return (
+                          <tr key={i} className={isBest ? 'opt-row-best' : isBaseline ? 'opt-row-baseline' : isCurrent ? 'opt-row-current' : ''}>
+                            <td>
+                              {isBest && <span className="opt-badge-best">BEST</span>}
+                              {isBaseline && <span className="opt-badge-base">BASE</span>}
+                              {isCurrent && <span className="opt-badge-current">YOU</span>}
+                              {' '}{s.strategy.name}
+                            </td>
+                            <td>{fmt(s.lifetimeTotalTax)}</td>
+                            <td>{fmt(s.lifetimeIRMAA)}</td>
+                            <td>{pct(s.peakMarginalRate)}</td>
+                            <td>{fmt(s.terminalTrad)}</td>
+                            <td>{fmt(s.terminalRoth)}</td>
+                            <td>{fmt(s.terminalTotal)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </CollapsibleTableSection>
+
+                {/* Comparison chart — metric adapts to goal */}
+                <div className="chart-subtitle">{chartMetric.label} by strategy</div>
+                <div style={{ position: 'relative', width: '100%', height: '200px' }}>
+                  <Bar
+                    data={{
+                      labels: optimization.strategies.map(s => s.strategy.name),
+                      datasets: [{
+                        label: chartMetric.label,
+                        data: optimization.strategies.map(s => s[chartMetric.key]),
+                        backgroundColor: optimization.strategies.map(s =>
+                          s.strategy.name === activeBest.strategy.name
+                            ? '#1D9E75'
+                            : s.strategy.name === optimization.baseline.strategy.name
+                              ? '#E74C3C'
+                              : s.strategy.name === 'Your current settings'
+                                ? '#3498DB'
+                                : '#378ADD'
+                        ),
+                      }],
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      animation: false,
+                      indexAxis: 'y',
+                      plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx: any) => fmt(ctx.parsed.x) } },
+                      },
+                      scales: {
+                        x: {
+                          ticks: { callback: (v: number | string) => fmt(Number(v)), font: { size: 10 } },
+                          grid: { color: 'rgba(128,128,128,0.1)' },
+                        },
+                        y: { ticks: { font: { size: 10 } }, grid: { display: false } },
+                      },
+                    } as any}
+                  />
+                </div>
+
+                {/* Start age analysis */}
+                {optimization.startAgeAnalysis.length > 0 && (() => {
+                  const BRACKET_LABELS = ['10%', '12%', '22%', '24%'];
+                  const metricLabel = (m: import('../optimizer').StartAgeMetric) =>
+                    `${BRACKET_LABELS[m.bracket]} / until ${m.untilAge}`;
+                  const visibleRows = optimization.startAgeAnalysis.filter(r => r.convStart >= optMinStartAge);
+                  // Only rows that would show a real value (not "—") are eligible for BEST
+                  const eligibleForGoal = visibleRows.filter(r => {
+                    const preRet = r.convStart < inputs.retireAge;
+                    if (optimizerGoal === 'portfolio') return !preRet || r.bestTerminal.hasPreRetirementConv;
+                    if (optimizerGoal === 'peakrate') return !preRet || r.bestPeak.hasPreRetirementConv;
+                    return !preRet || r.bestTax.hasPreRetirementConv;
+                  });
+                  const bestRowForGoal = eligibleForGoal.length === 0 ? null : eligibleForGoal.reduce((best, r) => {
+                    if (optimizerGoal === 'portfolio') return r.bestTerminal.terminalTotal > best.bestTerminal.terminalTotal ? r : best;
+                    if (optimizerGoal === 'peakrate') return r.bestPeak.peakMarginalRate < best.bestPeak.peakMarginalRate ? r : best;
+                    return r.bestTax.lifetimeTotalTax < best.bestTax.lifetimeTotalTax ? r : best;
+                  }, eligibleForGoal[0]);
+
+                  const goalSchedule = (row: typeof visibleRows[0]) =>
+                    optimizerGoal === 'portfolio' ? row.bestTerminal.schedule
+                    : optimizerGoal === 'peakrate' ? row.bestPeak.schedule
+                    : row.bestTax.schedule;
+
+                  return (
+                    <CollapsibleTableSection id="optimizer-start-age" title="Conversion start age analysis" meta={`${visibleRows.length} start ages`}>
+                      <div className="note" style={{ margin: '0 0 0.5rem' }}>
+                        Each row tests all 4 brackets by 4 until-ages and shows the independently optimized best for each metric. Apply uses the schedule matching your current goal.
+                      </div>
+                      <table className="optimizer-table opt-schedule-table">
+                        <thead>
+                          <tr>
+                            <th>Start Age</th>
+                            <th>Best Lifetime Tax</th>
+                            <th>Tax Savings</th>
+                            <th>Best Terminal</th>
+                            <th>Best Peak Rate</th>
+                            <th>Lowest IRMAA</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {visibleRows.map(row => {
+                            const isCurrentStart = row.convStart === (inputs.convStart ?? inputs.retireAge);
+                            const isBest = row === bestRowForGoal;
+                            const sched = goalSchedule(row);
+                            const activeMetric = optimizerGoal === 'portfolio' ? row.bestTerminal
+                              : optimizerGoal === 'peakrate' ? row.bestPeak
+                              : row.bestTax;
+                            const isApplied = conversionSchedule && JSON.stringify(conversionSchedule) === JSON.stringify(sched);
+                            const preRet = row.convStart < inputs.retireAge;
+                            // Show Apply when: schedule is non-empty AND (post-retirement OR the active metric has actual pre-retirement conversions)
+                            const canApply = Object.keys(sched).length > 0 && (!preRet || activeMetric.hasPreRetirementConv);
+                            const cell = (m: import('../optimizer').StartAgeMetric, content: React.ReactNode) =>
+                              preRet && !m.hasPreRetirementConv
+                                ? <td style={{ color: '#bbb' }}>—</td>
+                                : <td>{content}</td>;
+                            return (
+                              <tr key={row.convStart} className={isBest ? 'opt-row-best' : isCurrentStart ? 'opt-row-current' : ''}>
+                                <td>
+                                  {isBest && <span className="opt-badge-best">BEST</span>}
+                                  {isCurrentStart && !isBest && <span className="opt-badge-current">YOU</span>}
+                                  {' '}{row.convStart}
+                                </td>
+                                {cell(row.bestTax, <>
+                                  {fmt(row.bestTax.lifetimeTotalTax)}
+                                  <div style={{ fontSize: '10px', color: '#888', marginTop: '1px' }}>{metricLabel(row.bestTax)}</div>
+                                </>)}
+                                {cell(row.bestTax, <span style={{ color: row.bestTax.savings > 0 ? '#1D9E75' : '#C0392B', fontWeight: 600 }}>
+                                  {row.bestTax.savings > 0 ? '+' : ''}{fmt(row.bestTax.savings)}
+                                </span>)}
+                                {cell(row.bestTerminal, <>
+                                  {fmt(row.bestTerminal.terminalTotal)}
+                                  <div style={{ fontSize: '10px', color: '#888', marginTop: '1px' }}>{metricLabel(row.bestTerminal)}</div>
+                                </>)}
+                                {cell(row.bestPeak, <>
+                                  {pct(row.bestPeak.peakMarginalRate)}
+                                  <div style={{ fontSize: '10px', color: '#888', marginTop: '1px' }}>{metricLabel(row.bestPeak)}</div>
+                                </>)}
+                                {cell(row.bestIrmaa, <>
+                                  {fmt(row.bestIrmaa.lifetimeIRMAA)}
+                                  <div style={{ fontSize: '10px', color: '#888', marginTop: '1px' }}>{metricLabel(row.bestIrmaa)}</div>
+                                </>)}
+                                <td>
+                                  {isApplied ? (
+                                    <button onClick={onClearSchedule} style={{ fontSize: '10px', padding: '2px 6px', background: '#E74C3C', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
+                                      Reset
+                                    </button>
+                                  ) : canApply ? (
+                                    <button onClick={() => onApplySchedule(sched)} style={{ fontSize: '10px', padding: '2px 6px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
+                                      Apply
+                                    </button>
+                                  ) : null}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </CollapsibleTableSection>
+                  );
+                })()}
 
                 {/* Savings breakdown */}
                 <div className="detail-panel" style={{ marginTop: '1rem' }}>
