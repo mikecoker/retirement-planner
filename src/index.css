@@ -888,6 +888,30 @@ input[type=range] {
   font-size: 14px;
 }
 
+.conversion-optimizer-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.secondary-action-button {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  padding: 0.65rem 0.9rem;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-action-button:hover {
+  filter: brightness(1.04);
+}
+
 .window-list {
   margin-top: 1.6rem;
   border-top: 1px solid var(--border);
@@ -1182,4 +1206,5 @@ select option {
   .metrics { grid-template-columns: repeat(2, 1fr); }
   .setup-grid, .social-grid, .conversion-grid { grid-template-columns: 1fr; }
   .horizon-card, .ss-glance-card, .conversion-window-card { position: static; }
+  .conversion-optimizer-callout { align-items: flex-start; flex-direction: column; }
 }

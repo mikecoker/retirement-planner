@@ -688,6 +688,7 @@ const App: React.FC = () => {
         conversionSchedule={conversionSchedule}
         onApplySchedule={setConversionSchedule}
         onClearSchedule={() => setConversionSchedule(null)}
+        onNavigate={setActiveTab}
         onInputChange={handleInputChange}
         onExpenseItemsChange={handleExpenseItemsChange}
         onAccountsChange={handleAccountsChange}
