@@ -66,6 +66,7 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
   const hasAccounts = accounts.length > 0;
   const [subTab, setSubTab] = useState<'basic' | 'advanced'>(() => hasAccounts ? 'advanced' : 'basic');
   const [growthDrafts, setGrowthDrafts] = useState<Record<string, string>>({});
+  const [rateDrafts, setRateDrafts] = useState<Record<string, string>>({});
 
   const investmentAccounts = accounts.filter(a => INVESTMENT_TYPES.includes(a.type));
   const guaranteedAccounts = accounts.filter(a => GUARANTEED_TYPES.includes(a.type));
@@ -106,6 +107,18 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
   const finishGrowthEdit = (acct: Account) => {
     setGrowthDrafts(prev => {
       const { [acct.id]: _discard, ...rest } = prev;
+      return rest;
+    });
+  };
+  const updateRateDraft = (field: keyof InputParams, raw: string) => {
+    setRateDrafts(prev => ({ ...prev, [field]: raw }));
+    if (raw === '' || raw === '-' || raw === '.' || raw === '-.') return;
+    const value = Number(raw);
+    if (Number.isFinite(value)) onInputChange(field, value / 100);
+  };
+  const finishRateDraft = (field: keyof InputParams) => {
+    setRateDrafts(prev => {
+      const { [field]: _discard, ...rest } = prev;
       return rest;
     });
   };
@@ -446,7 +459,20 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
         <TipLabel text={tipText} />
-        <span style={{ fontSize: '12px', fontWeight: 600, color: '#1A5276', marginLeft: '4px' }}>{(value * 100).toFixed(decimals)}%</span>
+        <div className="range-number-wrap" style={{ maxWidth: 96 }}>
+          <input
+            className="range-number"
+            type="number"
+            min={min}
+            max={max}
+            step={step}
+            value={rateDrafts[field] ?? String(Number((value * 100).toFixed(decimals)))}
+            onInput={(e) => updateRateDraft(field, (e.target as HTMLInputElement).value)}
+            onBlur={() => finishRateDraft(field)}
+            aria-label={`${tipText} value`}
+          />
+          <span className="range-number-suffix">%</span>
+        </div>
       </div>
       <input
         type="range"
@@ -455,7 +481,10 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
         value={value * 100}
         step={step}
         style={{ width: '100%' }}
-        onInput={(e) => onInputChange(field, Number((e.target as HTMLInputElement).value) / 100)}
+        onInput={(e) => {
+          finishRateDraft(field);
+          onInputChange(field, Number((e.target as HTMLInputElement).value) / 100);
+        }}
       />
     </div>
   );

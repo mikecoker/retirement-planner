@@ -266,18 +266,50 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
           <div className="field">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
               <TipLabel text="Expense inflation (%)" />
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#1A5276' }}>{(inputs.expenseInflationRate * 100).toFixed(2)}%</span>
+              <div className="range-number-wrap" style={{ maxWidth: 96 }}>
+                <input
+                  className="range-number"
+                  type="number"
+                  min={1}
+                  max={6}
+                  step={0.25}
+                  value={draftValue('expenseInflationRate', Number((inputs.expenseInflationRate * 100).toFixed(2)))}
+                  onInput={(e) => updatePercentDraft('expenseInflationRate', (e.target as HTMLInputElement).value)}
+                  onBlur={() => finishBasicDraft('expenseInflationRate')}
+                  aria-label="Expense inflation value"
+                />
+                <span className="range-number-suffix">%</span>
+              </div>
             </div>
             <input type="range" min={1} max={6} value={inputs.expenseInflationRate * 100} step={0.25} style={{ width: '100%' }}
-              onInput={(e) => onInputChange('expenseInflationRate', Number((e.target as HTMLInputElement).value) / 100)} />
+              onInput={(e) => {
+                finishBasicDraft('expenseInflationRate');
+                onInputChange('expenseInflationRate', Number((e.target as HTMLInputElement).value) / 100);
+              }} />
           </div>
           <div className="field">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
               <TipLabel text="Healthcare inflation (%)" />
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#1A5276' }}>{(inputs.healthcareInflationRate * 100).toFixed(1)}%</span>
+              <div className="range-number-wrap" style={{ maxWidth: 96 }}>
+                <input
+                  className="range-number"
+                  type="number"
+                  min={2}
+                  max={10}
+                  step={0.5}
+                  value={draftValue('healthcareInflationRate', Number((inputs.healthcareInflationRate * 100).toFixed(1)))}
+                  onInput={(e) => updatePercentDraft('healthcareInflationRate', (e.target as HTMLInputElement).value)}
+                  onBlur={() => finishBasicDraft('healthcareInflationRate')}
+                  aria-label="Healthcare inflation value"
+                />
+                <span className="range-number-suffix">%</span>
+              </div>
             </div>
             <input type="range" min={2} max={10} value={inputs.healthcareInflationRate * 100} step={0.5} style={{ width: '100%' }}
-              onInput={(e) => onInputChange('healthcareInflationRate', Number((e.target as HTMLInputElement).value) / 100)} />
+              onInput={(e) => {
+                finishBasicDraft('healthcareInflationRate');
+                onInputChange('healthcareInflationRate', Number((e.target as HTMLInputElement).value) / 100);
+              }} />
           </div>
         </div>
         <div className="detail-section-title" style={{ marginTop: '1.4rem' }}>One-Time Expenses</div>
