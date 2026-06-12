@@ -388,7 +388,7 @@ function spouseOwnPia(params: InputParams, claimAge: number, ownMonthly: number)
 }
 
 function spouseAgeAtPrimaryFiling(params: InputParams): number {
-  return (params.spouseAge ?? params.ssAge) + (params.ssAge - params.age);
+  return (params.spouseAge ?? params.age) + (params.ssAge - params.age);
 }
 
 function spousalExcessMonthly(params: InputParams, startAge: number, spouseOwnPiaAmount: number): number {
@@ -398,9 +398,15 @@ function spousalExcessMonthly(params: InputParams, startAge: number, spouseOwnPi
 }
 
 export function spouseSsAt(params: InputParams, age: number): number {
-  if (params.spouseAge === undefined) return 0;
+  // The spouse-age slider displays the primary's age until it is moved, so an
+  // unset spouse age must default the same way or married plans are silently zeroed.
+  if (params.spouseAge === undefined) {
+    if (params.filingStatus !== 'married') return 0;
+    params = { ...params, spouseAge: params.age };
+  }
+  const spouseAge = params.spouseAge as number;
   const benefitFactor = params.ssBenefitFactor ?? 1;
-  const spouseAgeThisYear = params.spouseAge + (age - params.age);
+  const spouseAgeThisYear = spouseAge + (age - params.age);
   if (params.spouseLifeExp && spouseAgeThisYear > params.spouseLifeExp) return 0;
 
   const claimAge = params.spouseSsAge ?? 67;

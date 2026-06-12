@@ -208,9 +208,8 @@ const Main: React.FC<MainProps> = ({
   const scheduledPrimarySsMonthly = inputs.ss;
   const ssBenefitFactor = inputs.ssBenefitFactor ?? 1;
   const spouseClaimAge = inputs.spouseSsAge ?? 67;
-  const spouseClaimPrimaryAge = inputs.spouseAge !== undefined
-    ? inputs.age + Math.max(0, spouseClaimAge - inputs.spouseAge)
-    : inputs.age;
+  // An unset spouse age defaults to the primary's age, matching spouseSsAt and the sidebar slider
+  const spouseClaimPrimaryAge = inputs.age + Math.max(0, spouseClaimAge - (inputs.spouseAge ?? inputs.age));
   const spouseSsAnnualAtClaim = inputs.filingStatus === 'married'
     ? spouseSsAt(inputs, Math.max(spouseClaimPrimaryAge, inputs.ssAge))
     : 0;
