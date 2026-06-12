@@ -37,6 +37,7 @@ interface MainProps {
   conversionSchedule: Record<number, number> | null;
   onApplySchedule: (schedule: Record<number, number>) => void;
   onClearSchedule: () => void;
+  onNavigate: (page: PlannerPage) => void;
   onInputChange: (field: keyof InputParams, value: string | number | boolean) => void;
   onExpenseItemsChange: (items: import('../types').ExpenseItem[]) => void;
   onAccountsChange: (accounts: Account[]) => void;
@@ -141,6 +142,7 @@ const Main: React.FC<MainProps> = ({
   conversionSchedule,
   onApplySchedule,
   onClearSchedule,
+  onNavigate,
   onInputChange,
   onExpenseItemsChange,
   onAccountsChange,
@@ -710,8 +712,17 @@ const Main: React.FC<MainProps> = ({
                 page="conversions"
               />
             </div>
-            <div className="callout conversion-callout">
-              Converting traditional balances to Roth before RMDs begin fills lower brackets early and shrinks future required distributions. See <strong>Roth Optimizer</strong> to compare strategies, or set a manual schedule here.
+            <div className="callout conversion-callout conversion-optimizer-callout">
+              <div>
+                Converting traditional balances to Roth before RMDs begin fills lower brackets early and shrinks future required distributions. Use the optimizer to compare strategies, or set a manual schedule here.
+              </div>
+              <button
+                type="button"
+                className="secondary-action-button"
+                onClick={() => onNavigate('optimizer')}
+              >
+                Open Roth Optimizer
+              </button>
             </div>
           </div>
           <div className="chart-card conversion-window-card">
