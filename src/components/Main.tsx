@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { InputParams, ProjectionRow, Account, PlannerPage } from '../types';
 import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } from '../monteCarlo';
-import { spouseSsAt, ssAt } from '../financial';
+import { effectiveSpouseAge, spouseSsAt, ssAt } from '../financial';
 import { ExpenseTab } from './ExpenseTab';
 import { AccountsTab } from './AccountsTab';
 import Sidebar from './Sidebar';
@@ -191,10 +191,11 @@ const Main: React.FC<MainProps> = ({
     mc: 'Monte Carlo',
   };
   const yearsUntilRetirement = Math.max(0, inputs.retireAge - inputs.age);
+  const spouseAge = effectiveSpouseAge(inputs);
   const horizonEndAge = Math.max(
     inputs.lifeExp,
-    inputs.spouseAge !== undefined && inputs.spouseLifeExp !== undefined
-      ? inputs.age + (inputs.spouseLifeExp - inputs.spouseAge)
+    spouseAge !== undefined && inputs.spouseLifeExp !== undefined
+      ? inputs.age + (inputs.spouseLifeExp - spouseAge)
       : inputs.lifeExp,
   );
   const yearsInRetirement = Math.max(0, horizonEndAge - inputs.retireAge);
@@ -208,8 +209,8 @@ const Main: React.FC<MainProps> = ({
   const scheduledPrimarySsMonthly = inputs.ss;
   const ssBenefitFactor = inputs.ssBenefitFactor ?? 1;
   const spouseClaimAge = inputs.spouseSsAge ?? 67;
-  const spouseClaimPrimaryAge = inputs.spouseAge !== undefined
-    ? inputs.age + Math.max(0, spouseClaimAge - inputs.spouseAge)
+  const spouseClaimPrimaryAge = spouseAge !== undefined
+    ? inputs.age + Math.max(0, spouseClaimAge - spouseAge)
     : inputs.age;
   const spouseSsAnnualAtClaim = inputs.filingStatus === 'married'
     ? spouseSsAt(inputs, Math.max(spouseClaimPrimaryAge, inputs.ssAge))
@@ -307,7 +308,7 @@ const Main: React.FC<MainProps> = ({
   const survivorRowClassName = (r: ProjectionRow): string | undefined =>
     r.age > inputs.lifeExp ? 'survivor-row' : undefined;
   const SurvivorTag = ({ age }: { age: number }) =>
-    age === inputs.lifeExp + 1 && inputs.spouseAge !== undefined
+    age === inputs.lifeExp + 1 && spouseAge !== undefined
       ? <span style={{ marginLeft: 5, fontSize: 9, color: '#aaa', fontWeight: 600 }}>SPOUSE</span>
       : null;
 

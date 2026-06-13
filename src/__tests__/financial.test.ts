@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { estimateConfiguredStateTax, estimateTax, fullRetirementAge, runProjection, spouseSsAt, ssInterpolate, taxInflFactor } from '../financial';
+import { countEligible65, estimateConfiguredStateTax, estimateTax, fullRetirementAge, runProjection, spouseSsAt, ssInterpolate, taxInflFactor } from '../financial';
 import { buildHistoricalScenarioPath, buildScenarioPath, runMonteCarlo } from '../monteCarlo';
 import { STATE_TAX_PRESETS } from '../stateTaxPresets';
 import type { InputParams } from '../types';
@@ -294,6 +294,46 @@ describe('runProjection', () => {
 
     expect(spouseSsAt(params, 61)).toBe(0);
     expect(spouseSsAt(params, 62)).toBe(1200 * 12);
+  });
+
+  it('defaults an unset spouse age to the primary age for married filers', () => {
+    const params = {
+      ...BASE,
+      age: 60,
+      birthYear: 1966,
+      lifeExp: 66,
+      ssAge: 67,
+      ssCOLA: 0,
+      spouseAge: undefined,
+      spouseBirthYear: 1966,
+      spouseLifeExp: 70,
+      spouseSsType: 'own' as const,
+      spouseSs: 1200,
+      spouseSsAge: 62,
+      tradBal: 0,
+      rothBal: 0,
+      taxableBal: 100000,
+      hsaBal: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      ltcExpenses: 0,
+      includeMedicarePremiums: true,
+    };
+    const explicit = { ...params, spouseAge: params.age };
+
+    expect(spouseSsAt(params, 61)).toBe(0);
+    expect(spouseSsAt(params, 62)).toBe(1200 * 12);
+    expect(spouseSsAt(params, 62)).toBe(spouseSsAt(explicit, 62));
+    expect(spouseSsAt({ ...params, filingStatus: 'single' as const }, 62)).toBe(0);
+    expect(countEligible65(params, 65)).toBe(2);
+
+    const rows = runProjection(params, 0);
+    const explicitRows = runProjection(explicit, 0);
+    expect(rows[rows.length - 1].age).toBe(70);
+    expect(rows.find(r => r.age === 65)?.standardDeduction).toBe(explicitRows.find(r => r.age === 65)?.standardDeduction);
+    expect(rows.find(r => r.age === 65)?.healthcareExpenses).toBe(explicitRows.find(r => r.age === 65)?.healthcareExpenses);
+    expect(rows.find(r => r.age === 67)?.spouseSs).toBe(explicitRows.find(r => r.age === 67)?.spouseSs);
   });
 
   it('models spouse own-record Social Security from SSA age estimates', () => {

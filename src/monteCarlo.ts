@@ -1,4 +1,4 @@
-import { runProjection } from './financial';
+import { effectiveSpouseAge, runProjection } from './financial';
 import { HISTORICAL_RETURNS } from './historicalReturns';
 import type { InputParams, ProjectionRow, ScenarioYear } from './types';
 
@@ -175,10 +175,11 @@ export function buildHistoricalScenarioPath(
 ): ScenarioYear[] {
   const opts = normalizeOptions(options);
   const allocation = normalizedAllocation(opts);
+  const spouseAge = effectiveSpouseAge(inputs);
   const endAge = Math.max(
     inputs.lifeExp,
-    (inputs.spouseLifeExp && inputs.spouseAge)
-      ? inputs.age + (inputs.spouseLifeExp - inputs.spouseAge)
+    (inputs.spouseLifeExp && spouseAge !== undefined)
+      ? inputs.age + (inputs.spouseLifeExp - spouseAge)
       : inputs.lifeExp,
   );
   const path: ScenarioYear[] = [];
@@ -225,10 +226,11 @@ export function buildScenarioPath(
   rng: () => number = makeRng(normalizeOptions(options).seed),
 ): ScenarioYear[] {
   const opts = normalizeOptions(options);
+  const spouseAge = effectiveSpouseAge(inputs);
   const endAge = Math.max(
     inputs.lifeExp,
-    (inputs.spouseLifeExp && inputs.spouseAge)
-      ? inputs.age + (inputs.spouseLifeExp - inputs.spouseAge)
+    (inputs.spouseLifeExp && spouseAge !== undefined)
+      ? inputs.age + (inputs.spouseLifeExp - spouseAge)
       : inputs.lifeExp,
   );
   const path: ScenarioYear[] = [];

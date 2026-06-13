@@ -1,6 +1,6 @@
 import React from 'react';
 import type { InputParams } from '../types';
-import { fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, ssClaimFactor, ssInterpolate } from '../financial';
+import { effectiveSpouseAge, fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, ssClaimFactor, ssInterpolate } from '../financial';
 import TipLabel from './TipLabel';
 
 interface SidebarProps {
@@ -351,9 +351,8 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
               const primaryPIA = inputs.ss67
                 ? inputs.ss67 / ssClaimFactor(67, primaryFra)
                 : inputs.ss / ssClaimFactor(inputs.ssAge, primaryFra);
-              const spouseAgeAtPrimaryFiling = inputs.spouseAge !== undefined
-                ? inputs.spouseAge + (inputs.ssAge - inputs.age)
-                : claimAge;
+              const spouseAge = effectiveSpouseAge(inputs);
+              const spouseAgeAtPrimaryFiling = (spouseAge ?? claimAge) + (inputs.ssAge - inputs.age);
               const spousalReductionAt = (a: number) => {
                 const effAge = Math.min(a, spouseFra);
                 const mo = Math.max(0, Math.round((spouseFra - effAge) * 12));

@@ -23,10 +23,21 @@ export function inferredBirthYear(params: InputParams): number {
   return params.birthYear ?? new Date().getFullYear() - params.age;
 }
 
+export function effectiveSpouseAge(params: InputParams): number | undefined {
+  if (params.filingStatus !== 'married') return undefined;
+  return params.spouseAge ?? params.age;
+}
+
+function spouseAgeAt(params: InputParams, age: number): number | undefined {
+  const spouseAge = effectiveSpouseAge(params);
+  return spouseAge !== undefined ? spouseAge + (age - params.age) : undefined;
+}
+
 export function inferredSpouseBirthYear(params: InputParams): number | undefined {
   if (params.spouseBirthYear !== undefined) return params.spouseBirthYear;
-  if (params.spouseAge === undefined) return undefined;
-  return new Date().getFullYear() - params.spouseAge;
+  const spouseAge = effectiveSpouseAge(params);
+  if (spouseAge === undefined) return undefined;
+  return new Date().getFullYear() - spouseAge;
 }
 
 export function fullRetirementAge(birthYear: number): number {
@@ -117,7 +128,7 @@ export function taxInflFactor(params: InputParams, age: number, inflationRate = 
 export function countEligible65(params: InputParams, age: number): number {
   const primary65 = age >= 65 ? 1 : 0;
   if (params.filingStatus === 'single') return primary65;
-  const spouseCurrentAge = params.spouseAge !== undefined ? params.spouseAge + (age - params.age) : undefined;
+  const spouseCurrentAge = spouseAgeAt(params, age);
   const spouse65 = spouseCurrentAge !== undefined && spouseCurrentAge >= 65 ? 1 : 0;
   return primary65 + spouse65;
 }
@@ -388,7 +399,7 @@ function spouseOwnPia(params: InputParams, claimAge: number, ownMonthly: number)
 }
 
 function spouseAgeAtPrimaryFiling(params: InputParams): number {
-  return (params.spouseAge ?? params.ssAge) + (params.ssAge - params.age);
+  return (effectiveSpouseAge(params) ?? params.ssAge) + (params.ssAge - params.age);
 }
 
 function spousalExcessMonthly(params: InputParams, startAge: number, spouseOwnPiaAmount: number): number {
@@ -398,9 +409,10 @@ function spousalExcessMonthly(params: InputParams, startAge: number, spouseOwnPi
 }
 
 export function spouseSsAt(params: InputParams, age: number): number {
-  if (params.spouseAge === undefined) return 0;
+  const spouseAge = effectiveSpouseAge(params);
+  if (spouseAge === undefined) return 0;
   const benefitFactor = params.ssBenefitFactor ?? 1;
-  const spouseAgeThisYear = params.spouseAge + (age - params.age);
+  const spouseAgeThisYear = spouseAge + (age - params.age);
   if (params.spouseLifeExp && spouseAgeThisYear > params.spouseLifeExp) return 0;
 
   const claimAge = params.spouseSsAge ?? 67;
@@ -438,13 +450,14 @@ export function computeGuaranteedIncome(params: InputParams, age: number): numbe
   if (!params.accounts) return 0;
   let total = 0;
   const projectionYear = age - params.age;
-  const spouseAge = params.spouseAge !== undefined ? params.spouseAge + projectionYear : undefined;
+  const spouseStartAge = effectiveSpouseAge(params);
+  const spouseAge = spouseStartAge !== undefined ? spouseStartAge + projectionYear : undefined;
   const primaryAlive = age <= params.lifeExp;
-  const spouseAlive = params.spouseAge !== undefined && (!params.spouseLifeExp || (spouseAge ?? 0) <= params.spouseLifeExp);
+  const spouseAlive = spouseAge !== undefined && (!params.spouseLifeExp || spouseAge <= params.spouseLifeExp);
   const projEnd = Math.max(
     params.lifeExp,
-    (params.spouseLifeExp && params.spouseAge)
-      ? params.age + (params.spouseLifeExp - params.spouseAge)
+    (params.spouseLifeExp && spouseStartAge !== undefined)
+      ? params.age + (params.spouseLifeExp - spouseStartAge)
       : 0,
   );
 
@@ -463,7 +476,7 @@ export function computeGuaranteedIncome(params: InputParams, age: number): numbe
       : owner === 'spouse'
         ? primaryAlive
         : false;
-    const startAge = acct.incomeStartAge ?? (owner === 'spouse' && params.spouseAge !== undefined ? params.spouseAge : params.retireAge);
+    const startAge = acct.incomeStartAge ?? (owner === 'spouse' && spouseStartAge !== undefined ? spouseStartAge : params.retireAge);
     const defaultEndAge = owner === 'joint'
       ? projEnd
       : owner === 'spouse'
@@ -632,10 +645,11 @@ export function runProjection(
     return Math.max(0, 1 + adjustment);
   };
   // Effective last age of the projection — extends past primary's lifeExp when spouse outlives them
+  const spouseStartAge = effectiveSpouseAge(params);
   const projEndAge = Math.max(
     params.lifeExp,
-    (params.spouseLifeExp && params.spouseAge)
-      ? params.age + (params.spouseLifeExp - params.spouseAge)
+    (params.spouseLifeExp && spouseStartAge !== undefined)
+      ? params.age + (params.spouseLifeExp - spouseStartAge)
       : 0,
   );
   const totalYears = projEndAge - params.age;
@@ -707,10 +721,10 @@ export function runProjection(
     const expenseInflationFactor = scenario.expenseFactor;
     const healthcareInflationFactor = scenario.healthcareFactor;
     const cpiInflationFactor = scenario.inflationFactor;
-    const spouseCurrentAge = params.spouseAge !== undefined ? params.spouseAge + y : undefined;
+    const spouseCurrentAge = spouseStartAge !== undefined ? spouseStartAge + y : undefined;
     const primaryAlive = age <= params.lifeExp;
-    const spouseAlive = params.spouseAge !== undefined && (!params.spouseLifeExp || spouseCurrentAge! <= params.spouseLifeExp);
-    const isSurvivorYear = params.filingStatus === 'married' && params.spouseAge !== undefined && age > params.lifeExp;
+    const spouseAlive = spouseCurrentAge !== undefined && (!params.spouseLifeExp || spouseCurrentAge <= params.spouseLifeExp);
+    const isSurvivorYear = params.filingStatus === 'married' && spouseStartAge !== undefined && age > params.lifeExp;
     const filingStatusForYear: 'single' | 'married' = isSurvivorYear ? 'single' : params.filingStatus;
     const primaryEligible65 = !isSurvivorYear && age >= 65 ? 1 : 0;
     const spouseEligible65 = params.filingStatus === 'married' && spouseCurrentAge !== undefined && spouseCurrentAge >= 65 ? 1 : 0;
