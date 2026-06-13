@@ -566,10 +566,6 @@ const Main: React.FC<MainProps> = ({
 
   return (
     <div className="main">
-      <div className="page-heading">
-        <div className="page-kicker">{pageSection}</div>
-        <div className="page-title">{pageTitles[activeTab]}</div>
-      </div>
       <div className="metrics">
         <div className="metric-card">
           <div className="mlabel">Total at retirement</div>
@@ -592,6 +588,11 @@ const Main: React.FC<MainProps> = ({
           <div className="mval">{metrics.m5}</div>
         </div>
       </div>
+      <div className="main-scroll">
+        <div className="page-heading">
+          <div className="page-kicker">{pageSection}</div>
+          <div className="page-title">{pageTitles[activeTab]}</div>
+        </div>
 
       {activeTab === 'about' && (
         <div className="setup-grid">
@@ -1977,6 +1978,7 @@ const Main: React.FC<MainProps> = ({
           </div>
         );
       })()}
+      </div>
     </div>
   );
 };

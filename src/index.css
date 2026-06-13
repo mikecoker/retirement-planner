@@ -385,9 +385,26 @@ body {
 .main {
   grid-column: 2;
   background: var(--bg);
-  padding: 0.75rem 2rem 2rem;
-  gap: 1.1rem;
+  padding: 0 2rem;
+  gap: 0;
+  overflow: hidden;
 }
+
+.main-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1.1rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.35rem 0 2rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(154,165,177,0.35) transparent;
+}
+
+.main-scroll::-webkit-scrollbar { width: 6px; }
+.main-scroll::-webkit-scrollbar-track { background: transparent; }
+.main-scroll::-webkit-scrollbar-thumb { background: rgba(154,165,177,0.35); border-radius: 3px; }
 
 .brand {
   display: flex;
@@ -631,6 +648,9 @@ body {
 
 .metrics {
   gap: 1rem;
+  flex: 0 0 auto;
+  padding: 0.75rem 0 1rem;
+  background: var(--bg);
 }
 
 .metric-card,
