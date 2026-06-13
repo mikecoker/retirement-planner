@@ -217,6 +217,8 @@ export type PlannerPage =
   | 'optimizer'
   | 'mc';
 
+export type OptimizerGoal = 'tax' | 'portfolio' | 'peakrate' | 'greedy';
+
 export interface TaxBreakdown {
   brackets: Array<{
     bracket: string;

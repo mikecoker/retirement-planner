@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { InputParams, ProjectionRow, Account, PlannerPage } from '../types';
+import type { InputParams, ProjectionRow, Account, OptimizerGoal, PlannerPage } from '../types';
 import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } from '../monteCarlo';
 import { spouseSsAt, ssAt } from '../financial';
 import { ExpenseTab } from './ExpenseTab';
@@ -36,7 +36,7 @@ interface MainProps {
   optimization: import('../optimizer').OptimizationOutput | null;
   optTimestamp: number;
   conversionSchedule: Record<number, number> | null;
-  onApplySchedule: (schedule: Record<number, number>) => void;
+  onApplySchedule: (schedule: Record<number, number>, goal?: OptimizerGoal) => void;
   onClearSchedule: () => void;
   onNavigate: (page: PlannerPage) => void;
   onInputChange: (field: keyof InputParams, value: string | number | boolean) => void;
@@ -44,6 +44,8 @@ interface MainProps {
   onAccountsChange: (accounts: Account[]) => void;
   optMinStartAge: number;
   setOptMinStartAge: (age: number) => void;
+  optimizerGoal: OptimizerGoal;
+  setOptimizerGoal: (goal: OptimizerGoal) => void;
   mcRuns: number;
   setMcRuns: (runs: number) => void;
   mcSeed: string;
@@ -85,7 +87,6 @@ const pct = (n: number): string => (n * 100).toFixed(1) + '%';
 const CHART_TICK = '#8D99A6';
 const CHART_GRID = 'rgba(141,153,166,0.16)';
 
-type OptimizerGoal = 'tax' | 'portfolio' | 'peakrate' | 'greedy';
 type MonteCarloPreset = 'base' | 'stress';
 type MonteCarloMethod = 'parametric' | 'historical';
 type DollarMode = 'nominal' | 'today';
@@ -149,6 +150,8 @@ const Main: React.FC<MainProps> = ({
   onAccountsChange,
   optMinStartAge,
   setOptMinStartAge,
+  optimizerGoal,
+  setOptimizerGoal,
   mcRuns,
   setMcRuns,
   mcSeed,
@@ -168,7 +171,6 @@ const Main: React.FC<MainProps> = ({
   getMonteCarloOptions,
   dollarMode,
 }) => {
-  const [optimizerGoal, setOptimizerGoal] = useState<OptimizerGoal>('tax');
   const allRows = rows.slice(1); // all years from current age onward (skip y=0 initial state)
   const getSalary = (r: ProjectionRow) => r.age < inputs.retireAge ? (inputs.salary ?? 0) : 0;
   const pageSection = (['about', 'social', 'conversions', 'accounts', 'expenses'] as PlannerPage[]).includes(activeTab)
@@ -1331,10 +1333,12 @@ const Main: React.FC<MainProps> = ({
           <div className="chart-title">Roth Conversion Optimizer <span className="opt-timestamp">Updated {new Date(optTimestamp).toLocaleTimeString()}</span></div>
           {optimization ? (() => {
             const greedyResult = optimization.strategies.find(s => s.strategy.name === 'Greedy optimizer') ?? optimization.bestByTax;
-            const activeBest = optimizerGoal === 'tax' ? optimization.bestByTax
-              : optimizerGoal === 'portfolio' ? optimization.bestByPortfolio
-              : optimizerGoal === 'greedy' ? greedyResult
+            const bestForGoal = (goal: OptimizerGoal) =>
+              goal === 'tax' ? optimization.bestByTax
+              : goal === 'portfolio' ? optimization.bestByPortfolio
+              : goal === 'greedy' ? greedyResult
               : optimization.bestByPeakRate;
+            const activeBest = bestForGoal(optimizerGoal);
             const activeSchedule = activeBest.schedule;
             const activeScheduleYears = Object.keys(activeSchedule).map(Number).sort((a, b) => a - b);
             const activeUntilAge = activeScheduleYears.length > 0 ? Math.max(...activeScheduleYears) : 0;
@@ -1373,10 +1377,19 @@ const Main: React.FC<MainProps> = ({
               { id: 'peakrate', label: 'Smooth brackets', title: 'Minimize peak marginal rate — prevents large RMDs from spiking you into a high bracket. Ties broken by lowest lifetime tax.' },
               { id: 'greedy', label: 'Per-year optimal', title: 'Convert only when your current marginal rate is strictly lower than the expected future marginal rate on RMDs. Year-by-year opportunistic.' },
             ];
+            const activeGoalLabel = GOAL_OPTIONS.find(opt => opt.id === optimizerGoal)?.label ?? 'Selected strategy';
 
             const chartMetric = optimizerGoal === 'portfolio'
               ? { key: 'terminalTotal' as const, label: 'Terminal portfolio' }
               : { key: 'lifetimeTotalTax' as const, label: 'Lifetime total tax' };
+
+            const handleGoalChange = (goal: OptimizerGoal) => {
+              if (conversionSchedule) {
+                onApplySchedule(bestForGoal(goal).schedule, goal);
+              } else {
+                setOptimizerGoal(goal);
+              }
+            };
 
             return (
               <>
@@ -1387,7 +1400,7 @@ const Main: React.FC<MainProps> = ({
                     <button
                       key={opt.id}
                       title={opt.title}
-                      onClick={() => setOptimizerGoal(opt.id)}
+                      onClick={() => handleGoalChange(opt.id)}
                       style={{
                         padding: '4px 12px',
                         fontSize: '12px',
@@ -1441,7 +1454,7 @@ const Main: React.FC<MainProps> = ({
                   <span>Recommended conversion schedule</span>
                   {conversionSchedule ? (
                     <span style={{ fontSize: '11px', color: '#27AE60', fontWeight: 600 }}>
-                      Applied to projection —{' '}
+                      Applied to projection ({activeGoalLabel}) —{' '}
                       <button onClick={onClearSchedule} style={{ background: 'none', border: 'none', color: '#E74C3C', cursor: 'pointer', fontSize: '11px', padding: 0, fontWeight: 600 }}>
                         Reset to sidebar
                       </button>
@@ -1449,7 +1462,7 @@ const Main: React.FC<MainProps> = ({
                   ) : (
                     activeScheduleYears.length > 0 && (
                       <button
-                        onClick={() => onApplySchedule(activeSchedule)}
+                        onClick={() => onApplySchedule(activeSchedule, optimizerGoal)}
                         style={{ fontSize: '11px', padding: '3px 10px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
                       >
                         Apply to projection
@@ -1658,7 +1671,7 @@ const Main: React.FC<MainProps> = ({
                                       Reset
                                     </button>
                                   ) : canApply ? (
-                                    <button onClick={() => onApplySchedule(sched)} style={{ fontSize: '10px', padding: '2px 6px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
+                                    <button onClick={() => onApplySchedule(sched, optimizerGoal)} style={{ fontSize: '10px', padding: '2px 6px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
                                       Apply
                                     </button>
                                   ) : null}

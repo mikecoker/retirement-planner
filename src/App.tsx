@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { InputParams, ProjectionRow, Account, PlannerPage } from './types';
+import type { InputParams, ProjectionRow, Account, OptimizerGoal, PlannerPage } from './types';
 import { fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, runProjection, fmt, ssInterpolate } from './financial';
 import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } from './monteCarlo';
 import { runOptimizer } from './optimizer';
@@ -110,6 +110,7 @@ interface StoredPlan {
   inputs: InputParams;
   conversionSchedule: Record<number, number> | null;
   optMinStartAge?: number;
+  optimizerGoal?: OptimizerGoal;
   monteCarloSettings?: MonteCarloSettings;
 }
 
@@ -119,6 +120,7 @@ interface ExportedPlan {
   inputs: InputParams;
   conversionSchedule?: Record<number, number> | null;
   optMinStartAge?: number;
+  optimizerGoal?: OptimizerGoal;
   monteCarloSettings?: MonteCarloSettings;
 }
 
@@ -129,6 +131,9 @@ interface SamplePlan extends StoredPlan {
 type MonteCarloPreset = 'base' | 'stress';
 type MonteCarloMethod = 'parametric' | 'historical';
 type DollarMode = 'nominal' | 'today';
+
+const isOptimizerGoal = (value: unknown): value is OptimizerGoal =>
+  value === 'tax' || value === 'portfolio' || value === 'peakrate' || value === 'greedy';
 
 interface MonteCarloSettings {
   runs: number;
@@ -169,6 +174,7 @@ const SAMPLE_PLANS: SamplePlan[] = Object.entries(SAMPLE_PLAN_MODULES)
       inputs: { ...DEFAULTS, ...cloneJson(sample.inputs) },
       conversionSchedule: cloneJson(sample.conversionSchedule ?? null),
       optMinStartAge: sample.optMinStartAge,
+      optimizerGoal: isOptimizerGoal(sample.optimizerGoal) ? sample.optimizerGoal : undefined,
       monteCarloSettings: { ...DEFAULT_MONTE_CARLO_SETTINGS, ...(sample.monteCarloSettings ?? {}) },
       isSample: true as const,
     };
@@ -255,6 +261,7 @@ function exportPlanToFile(plan: StoredPlan): void {
     inputs: plan.inputs,
     conversionSchedule: plan.conversionSchedule ?? null,
     optMinStartAge: plan.optMinStartAge,
+    optimizerGoal: plan.optimizerGoal,
     monteCarloSettings: plan.monteCarloSettings ?? DEFAULT_MONTE_CARLO_SETTINGS,
   };
   const data = JSON.stringify(payload, null, 2);
@@ -267,7 +274,7 @@ function exportPlanToFile(plan: StoredPlan): void {
   URL.revokeObjectURL(url);
 }
 
-function importPlanFromFile(file: File): Promise<{ inputs: InputParams; conversionSchedule: Record<number, number> | null; optMinStartAge?: number; monteCarloSettings?: MonteCarloSettings }> {
+function importPlanFromFile(file: File): Promise<{ inputs: InputParams; conversionSchedule: Record<number, number> | null; optMinStartAge?: number; optimizerGoal?: OptimizerGoal; monteCarloSettings?: MonteCarloSettings }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -279,6 +286,7 @@ function importPlanFromFile(file: File): Promise<{ inputs: InputParams; conversi
             inputs: { ...DEFAULTS, ...parsed.inputs },
             conversionSchedule: parsed.conversionSchedule ?? null,
             optMinStartAge: parsed.optMinStartAge,
+            optimizerGoal: isOptimizerGoal(parsed.optimizerGoal) ? parsed.optimizerGoal : undefined,
             monteCarloSettings: { ...DEFAULT_MONTE_CARLO_SETTINGS, ...(parsed.monteCarloSettings ?? {}) },
           });
         } else {
@@ -315,6 +323,7 @@ const App: React.FC = () => {
   const inputs = activePlan.inputs;
   const conversionSchedule = activePlan.conversionSchedule;
   const optMinStartAge = activePlan.optMinStartAge ?? inputs.age;
+  const optimizerGoal = isOptimizerGoal(activePlan.optimizerGoal) ? activePlan.optimizerGoal : 'tax';
   const monteCarloSettings = { ...DEFAULT_MONTE_CARLO_SETTINGS, ...(activePlan.monteCarloSettings ?? {}) };
   const displayAtAge = (value: number, age: number) =>
     dollarMode === 'today'
@@ -416,6 +425,7 @@ const App: React.FC = () => {
       inputs: cloneJson(source.inputs),
       conversionSchedule: cloneJson(source.conversionSchedule),
       optMinStartAge: source.optMinStartAge,
+      optimizerGoal: source.optimizerGoal,
       monteCarloSettings: { ...DEFAULT_MONTE_CARLO_SETTINGS, ...(source.monteCarloSettings ?? {}) },
       ...patch,
     };
@@ -432,11 +442,14 @@ const App: React.FC = () => {
     setPlans(prev => prev.map(p => p.id === activePlanId ? { ...p, ...patch } : p));
   };
 
-  const setConversionSchedule = (schedule: Record<number, number> | null) =>
-    updateActivePlan({ conversionSchedule: schedule });
+  const setConversionSchedule = (schedule: Record<number, number> | null, goal: OptimizerGoal = optimizerGoal) =>
+    updateActivePlan({ conversionSchedule: schedule, optimizerGoal: goal });
 
   const setOptMinStartAge = (age: number) =>
     updateActivePlan({ optMinStartAge: age });
+
+  const setOptimizerGoal = (goal: OptimizerGoal) =>
+    updateActivePlan({ optimizerGoal: goal });
 
   const updateMonteCarloSettings = (patch: Partial<MonteCarloSettings>) =>
     updateActivePlan({ monteCarloSettings: { ...monteCarloSettings, ...patch } });
@@ -506,6 +519,7 @@ const App: React.FC = () => {
       inputs: DEFAULTS,
       conversionSchedule: null,
       optMinStartAge: undefined,
+      optimizerGoal: undefined,
       monteCarloSettings: DEFAULT_MONTE_CARLO_SETTINGS,
     });
     setPlanMenuOpen(false);
@@ -530,6 +544,7 @@ const App: React.FC = () => {
         inputs: imported,
         conversionSchedule: importedSchedule,
         optMinStartAge: importedOptAge,
+        optimizerGoal: importedOptimizerGoal,
         monteCarloSettings: importedMonteCarloSettings,
       } = await importPlanFromFile(file);
       const name = file.name.replace(/\.json$/i, '').replace(/[-_]/g, ' ');
@@ -537,6 +552,7 @@ const App: React.FC = () => {
         ...createPlan(name || 'Imported Plan', imported),
         conversionSchedule: importedSchedule,
         optMinStartAge: importedOptAge,
+        optimizerGoal: importedOptimizerGoal,
         monteCarloSettings: importedMonteCarloSettings ?? DEFAULT_MONTE_CARLO_SETTINGS,
       };
       setPlans(prev => [...prev, plan]);
@@ -731,6 +747,8 @@ const App: React.FC = () => {
         onAccountsChange={handleAccountsChange}
         optMinStartAge={optMinStartAge}
         setOptMinStartAge={setOptMinStartAge}
+        optimizerGoal={optimizerGoal}
+        setOptimizerGoal={setOptimizerGoal}
         mcRuns={monteCarloSettings.runs}
         setMcRuns={runs => updateMonteCarloSettings({ runs })}
         mcSeed={monteCarloSettings.seed}

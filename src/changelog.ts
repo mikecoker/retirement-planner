@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.1.0';
+export const APP_VERSION = '0.1.1';
 
 export interface ChangelogEntry {
   hash: string;
@@ -7,6 +7,11 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    hash: '81ac0af',
+    date: '2026-06-13',
+    title: 'Persisted the Roth Optimizer mode with applied schedules and re-applied schedules when the mode changes.',
+  },
   {
     hash: 'd00190f',
     date: '2026-06-13',
