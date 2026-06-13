@@ -296,6 +296,27 @@ describe('runProjection', () => {
     expect(spouseSsAt(params, 62)).toBe(1200 * 12);
   });
 
+  it('defaults an unset spouse age to the primary age for married filers', () => {
+    // Regression: the spouse-age slider displays the primary's age until moved,
+    // but spouseAge stayed undefined, zeroing the spouse benefit everywhere.
+    const params = {
+      ...BASE,
+      age: 60,
+      ssAge: 67,
+      ssCOLA: 0,
+      spouseAge: undefined,
+      spouseSsType: 'own' as const,
+      spouseSs: 1200,
+      spouseSsAge: 62,
+    };
+
+    expect(spouseSsAt(params, 61)).toBe(0);
+    expect(spouseSsAt(params, 62)).toBe(1200 * 12);
+    expect(spouseSsAt(params, 62)).toBe(spouseSsAt({ ...params, spouseAge: 60 }, 62));
+    // Single filers with leftover spouse data still get no spouse benefit
+    expect(spouseSsAt({ ...params, filingStatus: 'single' as const }, 62)).toBe(0);
+  });
+
   it('models spouse own-record Social Security from SSA age estimates', () => {
     const params = {
       ...BASE,
