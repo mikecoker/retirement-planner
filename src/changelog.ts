@@ -8,7 +8,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    hash: '216a808',
+    hash: '689eea9',
     date: '2026-06-13',
     title: 'Added the active plan name to the top bar, including selected sample plans.',
   },
