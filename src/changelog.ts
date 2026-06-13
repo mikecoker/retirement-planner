@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.1.1';
+export const APP_VERSION = '0.1.2';
 
 export interface ChangelogEntry {
   hash: string;
@@ -7,6 +7,11 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    hash: '216a808',
+    date: '2026-06-13',
+    title: 'Added the active plan name to the top bar, including selected sample plans.',
+  },
   {
     hash: '81ac0af',
     date: '2026-06-13',
