@@ -584,6 +584,10 @@ const App: React.FC = () => {
             Today's
           </button>
         </div>
+        <div className="header-plan" title={activePlan.name}>
+          <span>{isSamplePlan ? 'Sample plan' : 'Active plan'}</span>
+          <strong>{activePlan.name}</strong>
+        </div>
         <div className="file-actions">
           <label className="file-import">
             <span className="file-icon">⇧</span>

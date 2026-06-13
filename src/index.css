@@ -346,13 +346,18 @@ body {
 .header {
   grid-column: 2;
   grid-row: 1;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1.25rem;
   background: var(--bg);
   border-bottom: none;
   padding: 1.65rem 2rem 0.5rem;
 }
 
 .dollar-mode {
+  justify-self: start;
+  flex: 0 0 auto;
   background: var(--panel-2);
   border-color: var(--border);
 }
@@ -380,6 +385,40 @@ body {
 
 .dollar-mode-note strong {
   color: var(--text);
+}
+
+.header-plan {
+  min-width: 0;
+  max-width: min(720px, 44vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  justify-self: center;
+  text-align: left;
+}
+
+.header-plan span {
+  color: var(--text-faint);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.header-plan strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-actions {
+  justify-self: end;
 }
 
 .main {
