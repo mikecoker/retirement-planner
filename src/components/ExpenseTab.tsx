@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { InputParams, ExpenseItem, ExpenseCategory, ExpenseInflationType } from '../types';
 import { computeLoanPayoffMonths } from '../financial';
 import TipLabel from './TipLabel';
+import TouchSlider from './TouchSlider';
 
 interface Props {
   inputs: InputParams;
@@ -154,15 +155,6 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
       return rest;
     });
   };
-  const handleExpenseInflationRangeChange = (e: React.FormEvent<HTMLInputElement>) => {
-    finishBasicDraft('expenseInflationRate');
-    onInputChange('expenseInflationRate', Number(e.currentTarget.value) / 100);
-  };
-  const handleHealthcareInflationRangeChange = (e: React.FormEvent<HTMLInputElement>) => {
-    finishBasicDraft('healthcareInflationRate');
-    onInputChange('healthcareInflationRate', Number(e.currentTarget.value) / 100);
-  };
-
   const renderBasic = () => {
     const disabled = hasScheduledItems;
     return (
@@ -272,48 +264,36 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
 
           <div className="detail-section-title" style={{ marginTop: '1.2rem' }}>Inflation Rates</div>
           <div className="field">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+            <div style={{ marginBottom: '3px' }}>
               <TipLabel text="Expense inflation (%)" />
-              <div className="range-number-wrap" style={{ maxWidth: 96 }}>
-                <input
-                  className="range-number"
-                  type="number"
-                  min={1}
-                  max={6}
-                  step={0.25}
-                  value={draftValue('expenseInflationRate', Number((inputs.expenseInflationRate * 100).toFixed(2)))}
-                  onInput={(e) => updatePercentDraft('expenseInflationRate', (e.target as HTMLInputElement).value)}
-                  onBlur={() => finishBasicDraft('expenseInflationRate')}
-                  aria-label="Expense inflation value"
-                />
-                <span className="range-number-suffix">%</span>
-              </div>
             </div>
-            <input type="range" min={1} max={6} value={inputs.expenseInflationRate * 100} step={0.25} style={{ width: '100%' }}
-              onInput={handleExpenseInflationRangeChange}
-              onChange={handleExpenseInflationRangeChange} />
+            <TouchSlider
+              ariaLabel="Expense inflation"
+              value={inputs.expenseInflationRate * 100}
+              min={1}
+              max={6}
+              step={0.25}
+              decimals={2}
+              suffix="%"
+              numberStyle={{ maxWidth: 96 }}
+              onChange={(value) => onInputChange('expenseInflationRate', value / 100)}
+            />
           </div>
           <div className="field">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+            <div style={{ marginBottom: '3px' }}>
               <TipLabel text="Healthcare inflation (%)" />
-              <div className="range-number-wrap" style={{ maxWidth: 96 }}>
-                <input
-                  className="range-number"
-                  type="number"
-                  min={2}
-                  max={10}
-                  step={0.5}
-                  value={draftValue('healthcareInflationRate', Number((inputs.healthcareInflationRate * 100).toFixed(1)))}
-                  onInput={(e) => updatePercentDraft('healthcareInflationRate', (e.target as HTMLInputElement).value)}
-                  onBlur={() => finishBasicDraft('healthcareInflationRate')}
-                  aria-label="Healthcare inflation value"
-                />
-                <span className="range-number-suffix">%</span>
-              </div>
             </div>
-            <input type="range" min={2} max={10} value={inputs.healthcareInflationRate * 100} step={0.5} style={{ width: '100%' }}
-              onInput={handleHealthcareInflationRangeChange}
-              onChange={handleHealthcareInflationRangeChange} />
+            <TouchSlider
+              ariaLabel="Healthcare inflation"
+              value={inputs.healthcareInflationRate * 100}
+              min={2}
+              max={10}
+              step={0.5}
+              decimals={1}
+              suffix="%"
+              numberStyle={{ maxWidth: 96 }}
+              onChange={(value) => onInputChange('healthcareInflationRate', value / 100)}
+            />
           </div>
         </div>
         <div className="detail-section-title" style={{ marginTop: '1.4rem' }}>One-Time Expenses</div>

@@ -58,10 +58,19 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173).
 
+To test from another device on the same Wi-Fi network, run:
+
+```bash
+npm run dev:lan
+```
+
+Open one of the printed `Network` URLs on the other device. Pass a different fixed port with `npm run dev:lan -- --port 5174`.
+
 ## Scripts
 
 ```bash
-npm run dev      # start dev server
+npm run dev      # start local-only dev server
+npm run dev:lan  # start dev server and print same-network URLs for phone/tablet testing
 npm run build    # type-check + Vite bundle → dist/
 npm run preview  # serve the dist/ build locally
 npm test         # run unit tests

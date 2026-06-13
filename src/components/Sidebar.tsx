@@ -2,6 +2,7 @@ import React from 'react';
 import type { InputParams } from '../types';
 import { fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, ssClaimFactor, ssInterpolate } from '../financial';
 import TipLabel from './TipLabel';
+import TouchSlider from './TouchSlider';
 
 interface SidebarProps {
   inputs: InputParams;
@@ -12,7 +13,6 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSchedule, onClearSchedule, page }) => {
-  const [sliderDrafts, setSliderDrafts] = React.useState<Record<string, string>>({});
   const showAll = page === undefined;
   const conversionScheduleRows = conversionSchedule
     ? Object.entries(conversionSchedule)
@@ -41,75 +41,6 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
     onInputChange(field, (e.target as HTMLInputElement).checked);
   };
 
-  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-  const SliderNumber = ({
-    draftKey,
-    value,
-    min,
-    max,
-    step,
-    suffix,
-    decimals = 0,
-    onChange,
-  }: {
-    draftKey: string;
-    value: number;
-    min: number;
-    max: number;
-    step: number;
-    suffix?: string;
-    decimals?: number;
-    onChange: (value: number) => void;
-  }) => {
-    const formatValue = () => decimals > 0 ? value.toFixed(decimals) : String(Math.round(value));
-    const update = (raw: string, keepDraft = false) => {
-      if (keepDraft) setSliderDrafts(prev => ({ ...prev, [draftKey]: raw }));
-      if (raw === '' || raw === '-' || raw === '.' || raw === '-.') return;
-      const next = Number(raw);
-      if (!Number.isFinite(next)) return;
-      onChange(clamp(next, min, max));
-    };
-    const finishDraft = () => {
-      setSliderDrafts(prev => {
-        const { [draftKey]: _discard, ...rest } = prev;
-        return rest;
-      });
-    };
-
-    const handleRangeChange = (e: React.FormEvent<HTMLInputElement>) => {
-      finishDraft();
-      update(e.currentTarget.value);
-    };
-
-    return (
-      <div className="range-row">
-        <input
-          type="range"
-          min={min}
-          max={max}
-          value={value}
-          step={step}
-          onInput={handleRangeChange}
-          onChange={handleRangeChange}
-        />
-        <div className="range-number-wrap">
-          <input
-            className="range-number"
-            type="number"
-            min={min}
-            max={max}
-            step={step}
-            value={sliderDrafts[draftKey] ?? formatValue()}
-            onInput={(e) => update((e.target as HTMLInputElement).value, true)}
-            onBlur={finishDraft}
-            aria-label="Enter value"
-          />
-          {suffix && <span className="range-number-suffix">{suffix}</span>}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className={showAll ? 'sidebar' : 'setup-page'}>
       {/* Personal */}
@@ -117,7 +48,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
         <div className="section-label">About you</div>
         <div className="field">
           <TipLabel text="Current age" />
-          <SliderNumber draftKey="age" value={inputs.age} min={20} max={70} step={1} onChange={(value) => onInputChange('age', value)} />
+          <TouchSlider ariaLabel="Current age" value={inputs.age} min={20} max={70} step={1} onChange={(value) => onInputChange('age', value)} />
         </div>
         <div className="field">
           <TipLabel text="Birth year" />
@@ -127,11 +58,11 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
         </div>
         <div className="field">
           <TipLabel text="Retirement age" />
-          <SliderNumber draftKey="retireAge" value={inputs.retireAge} min={40} max={75} step={1} onChange={(value) => onInputChange('retireAge', value)} />
+          <TouchSlider ariaLabel="Retirement age" value={inputs.retireAge} min={40} max={75} step={1} onChange={(value) => onInputChange('retireAge', value)} />
         </div>
         <div className="field">
           <TipLabel text="Life expectancy" />
-          <SliderNumber draftKey="lifeExp" value={inputs.lifeExp} min={70} max={100} step={1} onChange={(value) => onInputChange('lifeExp', value)} />
+          <TouchSlider ariaLabel="Life expectancy" value={inputs.lifeExp} min={70} max={100} step={1} onChange={(value) => onInputChange('lifeExp', value)} />
         </div>
         <div className="field">
           <TipLabel text="Filing status" />
@@ -145,7 +76,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
           <>
             <div className="field">
               <TipLabel text="Spouse age" />
-              <SliderNumber draftKey="spouseAge" value={inputs.spouseAge ?? inputs.age} min={20} max={100} step={1} onChange={(value) => onInputChange('spouseAge', value)} />
+              <TouchSlider ariaLabel="Spouse age" value={inputs.spouseAge ?? inputs.age} min={20} max={100} step={1} onChange={(value) => onInputChange('spouseAge', value)} />
             </div>
             <div className="field">
               <TipLabel text="Spouse birth year" />
@@ -155,7 +86,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             </div>
             <div className="field">
               <TipLabel text="Spouse life expectancy" />
-              <SliderNumber draftKey="spouseLifeExp" value={inputs.spouseLifeExp ?? inputs.lifeExp} min={70} max={100} step={1} onChange={(value) => onInputChange('spouseLifeExp', value)} />
+              <TouchSlider ariaLabel="Spouse life expectancy" value={inputs.spouseLifeExp ?? inputs.lifeExp} min={70} max={100} step={1} onChange={(value) => onInputChange('spouseLifeExp', value)} />
             </div>
             <div className="field" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input type="checkbox" checked={inputs.useJointLifeRmd}
@@ -198,7 +129,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
         {/* Claim age slider */}
         <div className="field">
           <TipLabel text="Claim age" />
-          <SliderNumber draftKey="ssAge" value={inputs.ssAge} min={62} max={70} step={1} onChange={(value) => onInputChange('ssAge', value)} />
+          <TouchSlider ariaLabel="Social Security claim age" value={inputs.ssAge} min={62} max={70} step={1} onChange={(value) => onInputChange('ssAge', value)} />
         </div>
 
         {/* Benefit display / manual entry */}
@@ -293,8 +224,8 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
 
         <div className="field">
           <TipLabel text="Benefit paid (%)" />
-          <SliderNumber
-            draftKey="ssBenefitFactor"
+          <TouchSlider
+            ariaLabel="Social Security benefit paid percent"
             value={(inputs.ssBenefitFactor ?? 1) * 100}
             min={0}
             max={100}
@@ -309,8 +240,8 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
 
         <div className="field">
           <TipLabel text="SS COLA (%)" />
-          <SliderNumber
-            draftKey="ssCOLA"
+          <TouchSlider
+            ariaLabel="Social Security COLA percent"
             value={(inputs.ssCOLA ?? 0.025) * 100}
             min={0}
             max={5}
@@ -405,8 +336,8 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
 
                   <div className="field">
                     <TipLabel text="Spouse claim age" />
-                    <SliderNumber
-                      draftKey="spouseSsAge"
+                    <TouchSlider
+                      ariaLabel="Spouse Social Security claim age"
                       value={ssType === 'spousal' ? Math.min(claimAge, 67) : claimAge}
                       min={62}
                       max={ssType === 'spousal' ? 67 : 70}
@@ -589,8 +520,8 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             </div>
             <div className="field">
               <TipLabel text="Convert from age" />
-              <SliderNumber
-                draftKey="convStart"
+              <TouchSlider
+                ariaLabel="Roth conversion start age"
                 value={inputs.convStart ?? inputs.retireAge}
                 min={inputs.age}
                 max={inputs.convUntil}
@@ -600,8 +531,8 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             </div>
             <div className="field">
               <TipLabel text="Convert until age" />
-              <SliderNumber
-                draftKey="convUntil"
+              <TouchSlider
+                ariaLabel="Roth conversion end age"
                 value={inputs.convUntil}
                 min={inputs.convStart ?? inputs.retireAge}
                 max={80}

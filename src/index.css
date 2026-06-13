@@ -38,6 +38,26 @@ input[type=range] { width: 100%; accent-color: #378ADD; }
 .range-row { display: flex; align-items: center; gap: 8px; }
 .range-row input[type=range] { flex: 1; }
 .range-val { font-size: 13px; font-weight: 500; min-width: 38px; text-align: right; }
+.touch-slider { display: flex; align-items: center; gap: 8px; width: 100%; }
+.touch-slider-track { position: relative; flex: 1; min-width: 0; height: 34px; cursor: pointer; touch-action: none; user-select: none; }
+.touch-slider-rail,
+.touch-slider-fill { position: absolute; left: 0; top: 50%; height: 6px; border-radius: 999px; transform: translateY(-50%); pointer-events: none; }
+.touch-slider-rail { right: 0; background: rgba(128,128,128,0.35); }
+.touch-slider-fill { background: #68D1C4; }
+.touch-slider-thumb {
+  position: absolute;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #68D1C4;
+  border: 2px solid rgba(255,255,255,0.85);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.touch-slider-track:focus-visible { outline: none; }
+.touch-slider-track:focus-visible .touch-slider-thumb { box-shadow: 0 0 0 4px rgba(75,125,255,0.32), 0 2px 8px rgba(0,0,0,0.25); }
 .range-number-wrap { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex: 0 0 auto; min-width: 92px; }
 .range-number { width: 78px !important; padding: 5px 6px !important; text-align: right; font-weight: 600; }
 .range-number-suffix { color: #666; font-size: 12px; font-weight: 600; }
@@ -572,14 +592,26 @@ body {
   background: var(--accent);
   color: var(--accent-ink);
   border-color: transparent;
+  -webkit-tap-highlight-color: transparent;
 }
 
+.export-trigger:hover,
 .export-trigger.open,
 .export-trigger.open:hover,
-.export-trigger:active {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-color: #7BA4FF;
+.export-trigger:active,
+.export-trigger:focus,
+.export-trigger:focus-visible {
+  background: var(--accent) !important;
+  color: var(--accent-ink) !important;
+  border-color: #7BA4FF !important;
+}
+
+.export-trigger:hover *,
+.export-trigger.open *,
+.export-trigger:active *,
+.export-trigger:focus *,
+.export-trigger:focus-visible * {
+  color: var(--accent-ink) !important;
 }
 
 .export-trigger span {
