@@ -1333,7 +1333,7 @@ const Main: React.FC<MainProps> = ({
         <div className="chart-card">
           <div className="chart-title">Roth Conversion Optimizer <span className="opt-timestamp">Updated {new Date(optTimestamp).toLocaleTimeString()}</span></div>
           {optimization ? (() => {
-            const greedyResult = optimization.strategies.find(s => s.strategy.name === 'Greedy optimizer') ?? optimization.bestByTax;
+            const greedyResult = optimization.strategies.find(s => s.strategy.name === 'Per-year optimizer') ?? optimization.bestByTax;
             const bestForGoal = (goal: OptimizerGoal) =>
               goal === 'tax' ? optimization.bestByTax
               : goal === 'portfolio' ? optimization.bestByPortfolio

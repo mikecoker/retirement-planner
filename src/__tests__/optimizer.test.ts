@@ -129,6 +129,11 @@ describe('runOptimizer', () => {
     expect(smoother).toBeDefined();
   });
 
+  it('per-year optimizer is present in strategies', () => {
+    const perYear = opt.strategies.find(s => s.strategy.name === 'Per-year optimizer');
+    expect(perYear).toBeDefined();
+  });
+
   it('income smoother converts at 0% effective rate even when RMDs would be at 10%', () => {
     // BASE has $500K trad — RMDs land at 10% bracket. Converting at 12%+ to avoid 10% is bad,
     // but converting for FREE (income below standard deduction) is always beneficial.
