@@ -473,10 +473,10 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start', marginBottom: '8px' }}>
               <div>
                 <div style={{ fontWeight: 700, marginBottom: '3px' }}>
-                  Optimizer schedule active
+                  Scenario schedule active
                 </div>
                 <div style={{ color: '#555' }}>
-                  Manual conversion settings are hidden while this optimizer schedule is applied.
+                  Manual conversion settings are hidden while this modeled schedule is applied.
                 </div>
               </div>
               <button

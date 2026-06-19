@@ -8,7 +8,7 @@ A client-side retirement planning tool built with React and TypeScript. All calc
 
 - **Multiple plans** — create, rename, duplicate, and switch between plans; each plan stores its own inputs, Roth conversion schedule, and optimizer state
 - **Year-by-year projection** from current age through life expectancy, covering traditional, Roth, taxable brokerage, and HSA balances
-- **Roth conversion optimizer** — explores a bracket × until-age strategy grid plus a greedy per-year optimizer; recommends the schedule that minimizes lifetime taxes, maximizes terminal portfolio, or smooths income
+- **Roth conversion optimizer** — compares a bracket × until-age strategy grid plus a year-by-year scenario against lifetime tax, terminal portfolio, and bracket-smoothing goals
 - **Social Security estimator** — enter SSA.gov estimates at 62/67/70; slider interpolates using the actual SSA piecewise reduction formula with COLA applied annually after claim age
 - **Tax analysis** — 2026 federal brackets extrapolated forward by inflation, correct SS provisional income formula, IRMAA surcharges, 65+ standard deduction, optional flat or bracketed state tax
 - **Monte Carlo simulation** — 1,000 full projection reruns with randomized return assumptions, showing success rate
@@ -24,7 +24,7 @@ Importable sample plans live in [`sample-data`](sample-data/). They cover single
 
 Detailed user documentation is drafted in [`docs/wiki`](docs/wiki/) so it can be reviewed in pull requests and then published to the GitHub Wiki.
 
-- [`Home`](docs/wiki/Home.md) — wiki landing page and recommended first workflow
+- [`Home`](docs/wiki/Home.md) — wiki landing page and suggested first workflow
 - [`User Guide`](docs/wiki/User-Guide.md) — detailed walkthrough of plans, setup, results, optimizer, Monte Carlo, import, and export
 - [`Model Assumptions`](docs/wiki/Model-Assumptions.md) — tax, RMD, Social Security, return, and projection assumptions
 
@@ -39,7 +39,7 @@ Detailed user documentation is drafted in [`docs/wiki`](docs/wiki/) so it can be
 | RMDs & Conversions | Results | Required minimum distributions and Roth conversion amounts |
 | Tax Analysis | Results | Marginal/effective tax rates and dollar amounts |
 | Cash Flow | Results | Net cash flow year by year |
-| Roth Optimizer | Tool | Strategy comparison and recommended conversion schedule |
+| Roth Optimizer | Tool | Strategy comparison and modeled conversion schedules |
 | Monte Carlo | Tool | Success rate simulation |
 
 ## Stack
@@ -104,7 +104,7 @@ src/
 
 ## Key Assumptions
 
-- Tax brackets use 2026 values, extrapolated forward by the model's inflation rate
+- Federal tax brackets, standard deductions, IRMAA tiers, and contribution limits use 2026 values, extrapolated forward where modeled by the app's inflation rate
 - RMDs follow SECURE 2.0 rules using prior year-end balance; optional QCDs and an estimated joint-life adjustment are supported
 - Roth conversion taxes are modeled as paid from the taxable account
 - IRMAA surcharges based on MAGI from 2 years prior (approximated from current-year income)
@@ -127,4 +127,4 @@ MIT License. See [`LICENSE`](LICENSE).
 
 ## Disclaimer
 
-This project is an open-source planning tool. It is not financial, tax, legal, or investment advice. Validate important decisions with qualified professionals and official sources.
+This project is an open-source educational planning model. It is not financial, tax, legal, or investment advice. Results depend on current-law assumptions, tax-year data, and your inputs. Validate important decisions with qualified professionals and official sources.

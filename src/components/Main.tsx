@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { InputParams, ProjectionRow, Account, OptimizerGoal, PlannerPage } from '../types';
 import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } from '../monteCarlo';
-import { effectiveSpouseAge, spouseSsAt, ssAt } from '../financial';
+import { BASE_TAX_YEAR, effectiveSpouseAge, spouseSsAt, ssAt } from '../financial';
 import { ExpenseTab } from './ExpenseTab';
 import { AccountsTab } from './AccountsTab';
 import Sidebar from './Sidebar';
@@ -1351,32 +1351,32 @@ const Main: React.FC<MainProps> = ({
               if (optimizerGoal === 'tax') {
                 const vsCurrent = optimization.currentSettings.lifetimeTotalTax - activeBest.lifetimeTotalTax;
                 const vsBaseline = optimization.baseline.lifetimeTotalTax - activeBest.lifetimeTotalTax;
-                if (vsCurrent > 0) return `Saves ${fmt(vsCurrent)} in lifetime taxes vs your current settings`;
-                if (vsBaseline > 0) return `Saves ${fmt(vsBaseline)} in lifetime taxes vs no conversions`;
-                return 'No conversion strategy reduces lifetime taxes in this scenario';
+                if (vsCurrent > 0) return `Modeled lifetime taxes are ${fmt(vsCurrent)} lower than your current settings`;
+                if (vsBaseline > 0) return `Modeled lifetime taxes are ${fmt(vsBaseline)} lower than no conversions`;
+                return 'No modeled conversion scenario has lower lifetime taxes here';
               } else if (optimizerGoal === 'portfolio') {
                 const gain = activeBest.terminalTotal - optimization.baseline.terminalTotal;
                 if (gain > 0) return `Terminal portfolio ${fmt(gain)} larger vs no conversions`;
-                return 'Conversions do not improve terminal portfolio — early tax payments reduce compounding';
+                return 'No modeled conversion scenario has a larger terminal portfolio here; early tax payments reduce compounding';
               } else if (optimizerGoal === 'greedy') {
                 const taxSavings = optimization.baseline.lifetimeTotalTax - activeBest.lifetimeTotalTax;
                 const scheduleYears = Object.keys(activeBest.schedule).length;
-                if (scheduleYears === 0) return 'Current marginal rate is not lower than expected future RMD rate — no opportunistic conversions recommended';
-                if (taxSavings > 0) return `Converts only when current rate < future RMD rate. Saves ${fmt(taxSavings)} in lifetime taxes vs no conversions`;
-                return 'Per-year opportunistic schedule — converts whenever current bracket is cheaper than projected RMD bracket';
+                if (scheduleYears === 0) return 'Current marginal rate is not lower than expected future RMD rate in this scenario';
+                if (taxSavings > 0) return `This scenario only converts when current rate < future RMD rate, with modeled lifetime taxes ${fmt(taxSavings)} lower than no conversions`;
+                return 'Per-year comparison scenario based on current bracket vs projected RMD bracket';
               } else {
                 const rateReduction = optimization.baseline.peakMarginalRate - activeBest.peakMarginalRate;
                 const taxSavings = optimization.baseline.lifetimeTotalTax - activeBest.lifetimeTotalTax;
-                if (rateReduction > 0) return `Reduces peak marginal rate from ${pct(optimization.baseline.peakMarginalRate)} to ${pct(activeBest.peakMarginalRate)}, saving ${fmt(taxSavings)} in lifetime taxes`;
-                return 'No conversion strategy reduces your peak marginal rate in this scenario';
+                if (rateReduction > 0) return `Modeled peak marginal rate moves from ${pct(optimization.baseline.peakMarginalRate)} to ${pct(activeBest.peakMarginalRate)}, with lifetime taxes ${fmt(taxSavings)} lower than no conversions`;
+                return 'No modeled conversion scenario has a lower peak marginal rate here';
               }
             })();
 
             const GOAL_OPTIONS: { id: OptimizerGoal; label: string; title: string }[] = [
-              { id: 'tax', label: 'Minimize taxes', title: 'Minimize total taxes paid from retirement through life expectancy' },
-              { id: 'portfolio', label: 'Maximize portfolio', title: 'Maximize total portfolio value at end of plan — accounts for opportunity cost of paying taxes early' },
-              { id: 'peakrate', label: 'Smooth brackets', title: 'Minimize peak marginal rate — prevents large RMDs from spiking you into a high bracket. Ties broken by lowest lifetime tax.' },
-              { id: 'greedy', label: 'Per-year optimal', title: 'Convert only when your current marginal rate is strictly lower than the expected future marginal rate on RMDs. Year-by-year opportunistic.' },
+              { id: 'tax', label: 'Lowest taxes', title: 'Compare scenarios by modeled total taxes from retirement through life expectancy' },
+              { id: 'portfolio', label: 'Largest portfolio', title: 'Compare scenarios by modeled portfolio value at end of plan, including the opportunity cost of paying taxes early' },
+              { id: 'peakrate', label: 'Smoother brackets', title: 'Compare scenarios by modeled peak marginal rate. Ties are sorted by lower lifetime tax.' },
+              { id: 'greedy', label: 'Per-year comparison', title: 'Compare a year-by-year scenario that converts only when the current marginal rate is below the expected future marginal rate on RMDs.' },
             ];
             const activeGoalLabel = GOAL_OPTIONS.find(opt => opt.id === optimizerGoal)?.label ?? 'Selected strategy';
 
@@ -1395,8 +1395,11 @@ const Main: React.FC<MainProps> = ({
             return (
               <>
                 {/* Goal selector */}
+                <div className="note" style={{ margin: '0 0 0.75rem' }}>
+                  Educational model only, not tax or financial advice. Results depend on your inputs, current-law assumptions, and future rule changes; consult a qualified professional before acting. Federal tax model year: {BASE_TAX_YEAR}{selectedStateTaxPreset ? `; state preset tax year: ${selectedStateTaxPreset.taxYear}, rates as of ${selectedStateTaxPreset.ratesAsOf}` : '; state tax uses your custom settings if enabled'}.
+                </div>
                 <div style={{ display: 'flex', gap: '4px', margin: '0 0 0.5rem 0', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '11px', color: '#666', alignSelf: 'center', marginRight: '4px' }}>Optimize for:</span>
+                  <span style={{ fontSize: '11px', color: '#666', alignSelf: 'center', marginRight: '4px' }}>Compare by:</span>
                   {GOAL_OPTIONS.map(opt => (
                     <button
                       key={opt.id}
@@ -1433,10 +1436,10 @@ const Main: React.FC<MainProps> = ({
                   />
                 </div>
 
-                {/* Recommendation banner */}
+                {/* Scenario summary banner */}
                 <div className="optimizer-banner">
                   <div className="optimizer-rec-label">
-                    {optimizerGoal === 'tax' ? 'Lowest lifetime taxes' : optimizerGoal === 'portfolio' ? 'Largest terminal portfolio' : optimizerGoal === 'greedy' ? 'Per-year opportunistic' : 'Smoothest tax brackets'}
+                    {optimizerGoal === 'tax' ? 'Lowest modeled lifetime taxes' : optimizerGoal === 'portfolio' ? 'Largest modeled terminal portfolio' : optimizerGoal === 'greedy' ? 'Per-year comparison scenario' : 'Smoothest modeled tax brackets'}
                   </div>
                   <div className="optimizer-rec-name">{activeBest.strategy.name}</div>
                   <div className="optimizer-rec-desc">{activeBest.strategy.description}</div>
@@ -1452,7 +1455,7 @@ const Main: React.FC<MainProps> = ({
 
                 {/* Year-by-year conversion schedule for active strategy */}
                 <div className="chart-subtitle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>Recommended conversion schedule</span>
+                  <span>Modeled conversion schedule</span>
                   {conversionSchedule ? (
                     <span style={{ fontSize: '11px', color: '#27AE60', fontWeight: 600 }}>
                       Applied to projection ({activeGoalLabel}) —{' '}
@@ -1466,13 +1469,13 @@ const Main: React.FC<MainProps> = ({
                         onClick={() => onApplySchedule(activeSchedule, optimizerGoal)}
                         style={{ fontSize: '11px', padding: '3px 10px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
                       >
-                        Apply to projection
+                        Use in projection
                       </button>
                     )
                   )}
                 </div>
                 {activeScheduleYears.length === 0 ? (
-                  <div className="note">No conversions recommended for this scenario.</div>
+                  <div className="note">This scenario does not include Roth conversions.</div>
                 ) : (
                   <div className="optimizer-table-wrap">
                     <table className="optimizer-table opt-schedule-table">
@@ -1525,7 +1528,7 @@ const Main: React.FC<MainProps> = ({
                         return (
                           <tr key={i} className={isBest ? 'opt-row-best' : isBaseline ? 'opt-row-baseline' : isCurrent ? 'opt-row-current' : ''}>
                             <td>
-                              {isBest && <span className="opt-badge-best">BEST</span>}
+                              {isBest && <span className="opt-badge-best">SELECTED</span>}
                               {isBaseline && <span className="opt-badge-base">BASE</span>}
                               {isCurrent && <span className="opt-badge-current">YOU</span>}
                               {' '}{s.strategy.name}
@@ -1589,7 +1592,7 @@ const Main: React.FC<MainProps> = ({
                   const metricLabel = (m: import('../optimizer').StartAgeMetric) =>
                     `${BRACKET_LABELS[m.bracket]} / until ${m.untilAge}`;
                   const visibleRows = optimization.startAgeAnalysis.filter(r => r.convStart >= optMinStartAge);
-                  // Only rows that would show a real value (not "—") are eligible for BEST
+                  // Only rows that would show a real value (not "—") are eligible for the selected row marker.
                   const eligibleForGoal = visibleRows.filter(r => {
                     const preRet = r.convStart < inputs.retireAge;
                     if (optimizerGoal === 'portfolio') return !preRet || r.bestTerminal.hasPreRetirementConv;
@@ -1610,16 +1613,16 @@ const Main: React.FC<MainProps> = ({
                   return (
                     <CollapsibleTableSection id="optimizer-start-age" title="Conversion start age analysis" meta={`${visibleRows.length} start ages`}>
                       <div className="note" style={{ margin: '0 0 0.5rem' }}>
-                        Each row tests all 4 brackets by 4 until-ages and shows the independently optimized best for each metric. Apply uses the schedule matching your current goal.
+                        Each row tests all 4 brackets by 4 until-ages and shows the lowest or highest modeled outcome for each metric. Use in projection applies the schedule matching the current comparison goal.
                       </div>
                       <table className="optimizer-table opt-schedule-table">
                         <thead>
                           <tr>
                             <th>Start Age</th>
-                            <th>Best Lifetime Tax</th>
+                            <th>Lowest Lifetime Tax</th>
                             <th>Tax Savings</th>
-                            <th>Best Terminal</th>
-                            <th>Best Peak Rate</th>
+                            <th>Largest Terminal</th>
+                            <th>Lowest Peak Rate</th>
                             <th>Lowest IRMAA</th>
                             <th></th>
                           </tr>
@@ -1643,7 +1646,7 @@ const Main: React.FC<MainProps> = ({
                             return (
                               <tr key={row.convStart} className={isBest ? 'opt-row-best' : isCurrentStart ? 'opt-row-current' : ''}>
                                 <td>
-                                  {isBest && <span className="opt-badge-best">BEST</span>}
+                                  {isBest && <span className="opt-badge-best">SELECTED</span>}
                                   {isCurrentStart && !isBest && <span className="opt-badge-current">YOU</span>}
                                   {' '}{row.convStart}
                                 </td>
@@ -1673,7 +1676,7 @@ const Main: React.FC<MainProps> = ({
                                     </button>
                                   ) : canApply ? (
                                     <button onClick={() => onApplySchedule(sched, optimizerGoal)} style={{ fontSize: '10px', padding: '2px 6px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer' }}>
-                                      Apply
+                                      Use
                                     </button>
                                   ) : null}
                                 </td>
@@ -1689,7 +1692,7 @@ const Main: React.FC<MainProps> = ({
                 {/* Savings breakdown */}
                 <div className="detail-panel" style={{ marginTop: '1rem' }}>
                   <div className="detail-section-title">
-                    {optimizerGoal === 'portfolio' ? 'Portfolio impact vs no conversions' : 'Where the savings come from'}
+                    {optimizerGoal === 'portfolio' ? 'Portfolio impact vs no conversions' : 'Modeled difference vs no conversions'}
                   </div>
                   {optimizerGoal === 'portfolio' ? (
                     <>
@@ -1714,7 +1717,7 @@ const Main: React.FC<MainProps> = ({
                         </div>
                       </div>
                       <div className="note">
-                        Terminal total includes pre-tax traditional IRA balances. Maximizing portfolio value
+                        Terminal total includes pre-tax traditional IRA balances. A portfolio-value comparison
                         often favors fewer conversions because tax dollars paid early stop compounding. However,
                         Roth assets are more valuable to heirs since inherited traditional IRAs must be withdrawn
                         (and taxed) within 10 years.
@@ -1742,9 +1745,9 @@ const Main: React.FC<MainProps> = ({
                       </div>
                       <div className="note">
                         Large RMDs at 73+ can spike your marginal rate, increasing taxes on Social Security
-                        and triggering IRMAA surcharges. Converting enough before RMDs begin keeps your income
-                        in a lower bracket every year. Ties between strategies with the same peak rate are broken
-                        by lowest lifetime taxes.
+                        and triggering IRMAA surcharges. Pre-RMD conversion scenarios can keep modeled income
+                        in a lower bracket. Ties between strategies with the same peak rate are broken
+                        by lower lifetime taxes.
                       </div>
                     </>
                   ) : (
@@ -1769,7 +1772,7 @@ const Main: React.FC<MainProps> = ({
                       </div>
                       <div className="note">
                         Converting early at lower rates reduces future RMDs, which lowers marginal rates during RMD years,
-                        which reduces SS taxation and IRMAA surcharges. The optimal strategy fills brackets when current
+                        which reduces SS taxation and IRMAA surcharges. This scenario fills brackets when current
                         rates are lower than expected future rates.
                       </div>
                     </>
