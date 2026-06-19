@@ -1,6 +1,6 @@
 import React from 'react';
 import type { InputParams } from '../types';
-import { effectiveSpouseAge, fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, ssClaimFactor, ssInterpolate } from '../financial';
+import { defaultSpouseRetireAge, effectiveSpouseAge, fullRetirementAge, inferredBirthYear, inferredSpouseBirthYear, ssClaimFactor, ssInterpolate } from '../financial';
 import TipLabel from './TipLabel';
 import TouchSlider from './TouchSlider';
 
@@ -25,7 +25,7 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
   const handleNumberChange = (field: keyof InputParams, e: React.FormEvent<HTMLInputElement>) => {
     const val = Number((e.target as HTMLInputElement).value);
     // Optional spouse fields should be undefined when empty, not 0
-    const optionalFields: (keyof InputParams)[] = ['birthYear', 'spouseAge', 'spouseBirthYear', 'spouseLifeExp', 'spouseSs', 'spouseSs62', 'spouseSs67', 'spouseSs70'];
+    const optionalFields: (keyof InputParams)[] = ['birthYear', 'spouseAge', 'spouseBirthYear', 'spouseRetireAge', 'spouseLifeExp', 'spouseSs', 'spouseSs62', 'spouseSs67', 'spouseSs70'];
     onInputChange(field, val || (optionalFields.includes(field) ? undefined as any : 0));
   };
 
@@ -83,6 +83,10 @@ const Sidebar: React.FC<SidebarProps> = ({ inputs, onInputChange, conversionSche
               <input type="number" value={inputs.spouseBirthYear ?? ''}
                 step={1} placeholder={inputs.spouseAge !== undefined ? String(new Date().getFullYear() - inputs.spouseAge) : 'e.g. 1978'}
                 onInput={(e) => handleNumberChange('spouseBirthYear', e)} />
+            </div>
+            <div className="field">
+              <TipLabel text="Spouse retirement age" />
+              <TouchSlider ariaLabel="Spouse retirement age" value={inputs.spouseRetireAge ?? defaultSpouseRetireAge(inputs)} min={40} max={75} step={1} onChange={(value) => onInputChange('spouseRetireAge', value)} />
             </div>
             <div className="field">
               <TipLabel text="Spouse life expectancy" />

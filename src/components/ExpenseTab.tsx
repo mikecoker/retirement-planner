@@ -167,6 +167,11 @@ export const ExpenseTab: React.FC<Props> = ({ inputs, onItemsChange, onInputChan
             </button>
           </div>
         )}
+        {!disabled && (
+          <div className="note" style={{ margin: '0 0 1rem' }}>
+            Basic expenses model combined household monthly spending by broad category. Use Advanced expenses when you need separate recurring bills, loans, one-time costs, custom start/end ages, or category-specific inflation.
+          </div>
+        )}
         <div style={{ opacity: disabled ? 0.4 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
           <div className="detail-section-title">Monthly Spending</div>
           <div className="field">

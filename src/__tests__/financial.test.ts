@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { countEligible65, estimateConfiguredStateTax, estimateTax, fullRetirementAge, runProjection, spouseSsAt, ssInterpolate, taxInflFactor } from '../financial';
+import { activeSalaryAt, countEligible65, estimateConfiguredStateTax, estimateTax, fullRetirementAge, householdRetirementAge, runProjection, spouseSsAt, ssInterpolate, taxInflFactor } from '../financial';
 import { buildHistoricalScenarioPath, buildScenarioPath, runMonteCarlo } from '../monteCarlo';
 import { STATE_TAX_PRESETS } from '../stateTaxPresets';
 import type { InputParams } from '../types';
@@ -737,6 +737,90 @@ describe('runProjection', () => {
     for (let i = 1; i < preRetire.length; i++) {
       expect(preRetire[i].total).toBeGreaterThan(preRetire[i - 1].total);
     }
+  });
+
+  it('models primary and spouse wages until their separate retirement ages', () => {
+    const params: InputParams = {
+      ...BASE,
+      age: 60,
+      retireAge: 62,
+      lifeExp: 66,
+      spouseAge: 60,
+      spouseRetireAge: 65,
+      salary: 100000,
+      spouseSalary: 50000,
+      tradBal: 0,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      tradContrib: 0,
+      rothContrib: 0,
+      taxableContrib: 0,
+      hsaContrib: 0,
+      employerMatch: 0,
+      ss: 0,
+      spouseSs: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      taxableQualifiedDividendYield: 0,
+      r: 0,
+      taxableReturn: 0,
+      hsaReturn: 0,
+    };
+    expect(householdRetirementAge(params)).toBe(65);
+    expect(activeSalaryAt(params, 61)).toBe(150000);
+    expect(activeSalaryAt(params, 62)).toBe(50000);
+    expect(activeSalaryAt(params, 65)).toBe(0);
+
+    const rows = runProjection(params, 0);
+    expect(rows.find(r => r.age === 62)?.ordinaryIncome).toBe(50000);
+    expect(rows.find(r => r.age === 65)?.ordinaryIncome).toBe(0);
+  });
+
+  it('continues spouse-owned advanced contributions until spouse retirement age', () => {
+    const params: InputParams = {
+      ...BASE,
+      age: 60,
+      retireAge: 62,
+      lifeExp: 65,
+      spouseAge: 60,
+      spouseRetireAge: 64,
+      salary: 0,
+      spouseSalary: 100000,
+      tradBal: 0,
+      rothBal: 0,
+      taxableBal: 0,
+      hsaBal: 0,
+      tradContrib: 0,
+      rothContrib: 0,
+      taxableContrib: 0,
+      hsaContrib: 0,
+      employerMatch: 0,
+      ss: 0,
+      spouseSs: 0,
+      expenses: 0,
+      healthcareExpenses: 0,
+      discretionaryExpenses: 0,
+      taxableQualifiedDividendYield: 0,
+      r: 0,
+      taxableReturn: 0,
+      hsaReturn: 0,
+      accounts: [{
+        id: 'spouse-roth',
+        name: 'Spouse Roth',
+        type: 'roth',
+        owner: 'spouse',
+        balance: 0,
+        annualContrib: 1000,
+        growthRate: 0,
+      }],
+    };
+    const rows = runProjection(params, 0);
+    expect(rows.find(r => r.age === 61)?.roth).toBe(1000);
+    expect(rows.find(r => r.age === 62)?.roth).toBe(2000);
+    expect(rows.find(r => r.age === 63)?.roth).toBe(3000);
+    expect(rows.find(r => r.age === 64)?.roth).toBe(3000);
   });
 
   it('caps basic retirement and HSA contributions at 2026 limits', () => {

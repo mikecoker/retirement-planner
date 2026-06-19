@@ -1,5 +1,5 @@
 import type { InputParams, ProjectionRow } from './types';
-import { runProjection, bracketHeadroom, stdDeductionHeadroom, taxableSSPortion, ssAt, spouseSsAt, taxInflFactor, countEligible65, estimateTax, estimateConfiguredStateTax } from './financial';
+import { runProjection, activeSalaryAt, bracketHeadroom, householdRetirementAge, stdDeductionHeadroom, taxableSSPortion, ssAt, spouseSsAt, taxInflFactor, countEligible65, estimateTax, estimateConfiguredStateTax } from './financial';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -138,7 +138,7 @@ function buildSchedule(
     const spouseSsInc = spouseSsAt(params, age);
     const rmd = row.rmd;
     const ssTaxableBefore = taxableSSPortion(ssInc + spouseSsInc, rmd, params.filingStatus);
-    const annualSalary = age < params.retireAge ? (params.salary ?? 0) : 0;
+    const annualSalary = activeSalaryAt(params, age);
     const ordinaryBefore = rmd + ssTaxableBefore + annualSalary;
 
     // Headroom to fill up to the target bracket
@@ -276,7 +276,7 @@ function buildFixedAnnualSchedule(
     if (!row || remainingTrad <= 0) continue;
     remainingTrad *= (1 + params.r);
     const rmd = row.rmd;
-    if (age < minConvStartAge || (age < params.retireAge && (params.salary ?? 0) > 0)) {
+    if (age < minConvStartAge || activeSalaryAt(params, age) > 0) {
       remainingTrad -= rmd;
       continue;
     }
@@ -576,7 +576,7 @@ export function runOptimizer(params: InputParams, minConvStartAge?: number): Opt
           terminalTotal: res.terminalTotal,
           savings: baselineTax - res.lifetimeTotalTax,
           schedule: sched,
-          hasPreRetirementConv: Object.keys(sched).some(a => Number(a) < params.retireAge),
+          hasPreRetirementConv: Object.keys(sched).some(a => Number(a) < householdRetirementAge(params)),
         };
         if (!bTax || m.lifetimeTotalTax < bTax.lifetimeTotalTax) bTax = m;
         if (!bTerminal || m.terminalTotal > bTerminal.terminalTotal) bTerminal = m;
@@ -588,7 +588,7 @@ export function runOptimizer(params: InputParams, minConvStartAge?: number): Opt
     }
     if (!bTax || !bTerminal || !bPeak || !bIrmaa) continue;
     // Skip pre-retirement start ages where salary fills all brackets (no room for early conversions)
-    if (startAge < params.retireAge && ![bTax, bTerminal, bPeak, bIrmaa].some(m => m.hasPreRetirementConv)) continue;
+    if (startAge < householdRetirementAge(params) && ![bTax, bTerminal, bPeak, bIrmaa].some(m => m.hasPreRetirementConv)) continue;
     if (bTax.savings <= 0 && startAgeAnalysis.length > 0) break;
     startAgeAnalysis.push({
       convStart: startAge,

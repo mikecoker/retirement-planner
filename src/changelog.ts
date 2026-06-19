@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.1.3';
+export const APP_VERSION = '0.1.4';
 
 export interface ChangelogEntry {
   hash: string;
@@ -9,6 +9,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     hash: 'unreleased',
+    date: '2026-06-19',
+    title: 'Separated spouse retirement age and wages, and clarified Basic vs Advanced account and expense modeling.',
+  },
+  {
+    hash: 'db974cd',
     date: '2026-06-19',
     title: 'Softened Roth Optimizer wording, added educational-model disclosures, and surfaced modeled tax years.',
   },

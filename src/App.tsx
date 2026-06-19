@@ -20,6 +20,7 @@ const DEFAULTS: InputParams = {
   filingStatus: 'single',
   spouseAge: undefined,
   spouseBirthYear: undefined,
+  spouseRetireAge: undefined,
   spouseLifeExp: undefined,
   spouseSsType: 'own',
   spouseSs: undefined,
@@ -64,6 +65,7 @@ const DEFAULTS: InputParams = {
 
   // Income during working years
   salary: undefined,
+  spouseSalary: undefined,
 
   // Roth conversions
   rothConv: 0,

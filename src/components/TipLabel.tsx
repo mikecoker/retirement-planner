@@ -8,6 +8,7 @@ const DEFINITIONS: Record<string, string> = {
   'Filing status': 'Your IRS tax filing status. This determines your tax brackets, standard deduction, and Social Security taxation thresholds.',
   'Spouse age': 'Your spouse\'s current age, used to model spousal Social Security benefits and joint tax calculations.',
   'Spouse birth year': 'Used to determine your spouse\'s Social Security full retirement age. Leave blank to infer it from spouse age.',
+  'Spouse retirement age': 'The age when your spouse stops working. Spouse wages and spouse-owned advanced-account contributions stop at this age.',
   'Spouse life expectancy': 'Your spouse\'s expected age at death. The projection runs until the later of your two life expectancies to ensure the portfolio covers both lifetimes.',
   'Spouse SS ($/mo)': 'Manual fallback for your spouse\'s estimated monthly Social Security benefit at their claim age. If spouse SSA estimates at 62/67/70 are entered, those estimates are used instead.',
   'Spouse SS claim age': 'The age when your spouse starts collecting Social Security. Same rules as yours: 62 reduces benefits, 70 maximizes them.',
@@ -57,7 +58,8 @@ const DEFINITIONS: Record<string, string> = {
   'Qualified dividend yield (%)': 'Annual taxable-account qualified dividend yield, taxed at long-term capital gains rates federally.',
   'Realized LTCG yield (%)': 'Annual taxable-account long-term gain realization rate. Unrealized appreciation remains deferred until withdrawals.',
   'Inflation (%)': 'General inflation rate used to inflate Social Security (via COLA) and expenses. Historical CPI average is ~3%. Use 2.5-3.5% for typical scenarios.',
-  'Annual salary / wages': 'Gross W-2 wages during working years. Used to compute your current tax bracket, headroom for Roth conversions before retirement, and employer match calculations.',
+  'Annual salary / wages': 'Your gross W-2 wages during your working years. Used to compute tax brackets, Roth conversion headroom, contribution caps, and employer match calculations.',
+  'Spouse annual salary / wages': 'Your spouse\'s gross W-2 wages during their working years. Used with spouse retirement age for joint tax brackets, contribution caps, and spouse-owned employer match calculations.',
 };
 
 interface TipLabelProps {

@@ -8,6 +8,7 @@ export interface InputParams {
   filingStatus: 'single' | 'married';
   spouseAge?: number;
   spouseBirthYear?: number;
+  spouseRetireAge?: number;
   spouseLifeExp?: number;
   spouseSsType?: 'own' | 'spousal' | 'combined';  // 'own' = own record only; 'spousal' = 50% of primary PIA; 'combined' = max(own, spousal)
   spouseSs?: number;     // monthly benefit (own record, at claim age)
@@ -52,6 +53,7 @@ export interface InputParams {
 
   // Income during working years
   salary?: number; // annual gross wages — used to compute bracket headroom for pre-retirement conversions
+  spouseSalary?: number; // annual gross wages for spouse, active until spouseRetireAge
 
   // Roth conversions
   rothConv: number;

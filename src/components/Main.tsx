@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { InputParams, ProjectionRow, Account, OptimizerGoal, PlannerPage } from '../types';
 import { DEFAULT_MONTE_CARLO_OPTIONS, type MonteCarloOptions, runMonteCarlo } from '../monteCarlo';
-import { BASE_TAX_YEAR, effectiveSpouseAge, spouseSsAt, ssAt } from '../financial';
+import { BASE_TAX_YEAR, activeSalaryAt, defaultSpouseRetireAge, effectiveSpouseAge, householdRetirementAge, spouseSsAt, ssAt } from '../financial';
 import { ExpenseTab } from './ExpenseTab';
 import { AccountsTab } from './AccountsTab';
 import Sidebar from './Sidebar';
@@ -172,7 +172,7 @@ const Main: React.FC<MainProps> = ({
   dollarMode,
 }) => {
   const allRows = rows.slice(1); // all years from current age onward (skip y=0 initial state)
-  const getSalary = (r: ProjectionRow) => r.age < inputs.retireAge ? (inputs.salary ?? 0) : 0;
+  const getSalary = (r: ProjectionRow) => activeSalaryAt(inputs, r.age);
   const pageSection = (['about', 'social', 'conversions', 'accounts', 'expenses'] as PlannerPage[]).includes(activeTab)
     ? 'Setup'
     : (['optimizer', 'mc'] as PlannerPage[]).includes(activeTab)
@@ -192,7 +192,8 @@ const Main: React.FC<MainProps> = ({
     optimizer: 'Roth Optimizer',
     mc: 'Monte Carlo',
   };
-  const yearsUntilRetirement = Math.max(0, inputs.retireAge - inputs.age);
+  const householdRetireAge = householdRetirementAge(inputs);
+  const yearsUntilRetirement = Math.max(0, householdRetireAge - inputs.age);
   const spouseAge = effectiveSpouseAge(inputs);
   const horizonEndAge = Math.max(
     inputs.lifeExp,
@@ -200,7 +201,10 @@ const Main: React.FC<MainProps> = ({
       ? inputs.age + (inputs.spouseLifeExp - spouseAge)
       : inputs.lifeExp,
   );
-  const yearsInRetirement = Math.max(0, horizonEndAge - inputs.retireAge);
+  const yearsInRetirement = Math.max(0, horizonEndAge - householdRetireAge);
+  const spouseRetirePrimaryAge = inputs.filingStatus === 'married' && spouseAge !== undefined
+    ? (inputs.spouseRetireAge !== undefined ? inputs.age + (inputs.spouseRetireAge - spouseAge) : inputs.retireAge)
+    : undefined;
   const projectionAgeRange = rows.length > 0
     ? `age ${rows[0].age}-${rows[rows.length - 1].age}`
     : undefined;
@@ -611,7 +615,7 @@ const Main: React.FC<MainProps> = ({
           <div className="chart-card horizon-card">
             <div className="chart-title">Your horizon</div>
             <div className="horizon-stat">
-              <div className="detail-label">Years until retirement</div>
+              <div className="detail-label">Years until household retirement</div>
               <div><span className="horizon-number accent">{yearsUntilRetirement}</span><span className="horizon-unit"> yrs</span></div>
             </div>
             <div className="horizon-divider" />
@@ -624,7 +628,7 @@ const Main: React.FC<MainProps> = ({
               <span style={{ flexGrow: Math.max(1, yearsInRetirement) }} />
             </div>
             <div className="note">
-              Retiring at <strong>{inputs.retireAge}</strong>, planning through <strong>{horizonEndAge}</strong>, filing <strong>{inputs.filingStatus === 'married' ? 'jointly' : 'single'}</strong>.
+              You retire at <strong>{inputs.retireAge}</strong>{inputs.filingStatus === 'married' ? <>; spouse retires at <strong>{inputs.spouseRetireAge ?? defaultSpouseRetireAge(inputs)}</strong></> : null}. Planning through <strong>{horizonEndAge}</strong>, filing <strong>{inputs.filingStatus === 'married' ? 'jointly' : 'single'}</strong>.
             </div>
           </div>
         </div>
@@ -770,10 +774,11 @@ const Main: React.FC<MainProps> = ({
                   const prev = rows[i - 1];
                   const change = prev ? r.total - prev.total : null;
                   return (
-                    <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r, r.age === inputs.retireAge ? { borderTop: '2px solid #378ADD' } : undefined)}>
+                    <tr key={r.age} className={survivorRowClassName(r)} style={survivorRowStyle(r, r.age === inputs.retireAge || r.age === spouseRetirePrimaryAge ? { borderTop: '2px solid #378ADD' } : undefined)}>
                       <td>
                         {r.age}
-                        {r.age === inputs.retireAge && <span style={{ marginLeft: 6, fontSize: 10, color: '#378ADD', fontWeight: 600 }}>RETIRE</span>}
+                        {r.age === inputs.retireAge && <span style={{ marginLeft: 6, fontSize: 10, color: '#378ADD', fontWeight: 600 }}>YOU RETIRE</span>}
+                        {r.age === spouseRetirePrimaryAge && <span style={{ marginLeft: 6, fontSize: 10, color: '#378ADD', fontWeight: 600 }}>SPOUSE RETIRES</span>}
                         <SurvivorTag age={r.age} />
                       </td>
                       <td>{displayFmt(r.trad, r.age)}</td>
@@ -1594,7 +1599,7 @@ const Main: React.FC<MainProps> = ({
                   const visibleRows = optimization.startAgeAnalysis.filter(r => r.convStart >= optMinStartAge);
                   // Only rows that would show a real value (not "—") are eligible for the selected row marker.
                   const eligibleForGoal = visibleRows.filter(r => {
-                    const preRet = r.convStart < inputs.retireAge;
+                    const preRet = r.convStart < householdRetireAge;
                     if (optimizerGoal === 'portfolio') return !preRet || r.bestTerminal.hasPreRetirementConv;
                     if (optimizerGoal === 'peakrate') return !preRet || r.bestPeak.hasPreRetirementConv;
                     return !preRet || r.bestTax.hasPreRetirementConv;
@@ -1636,7 +1641,7 @@ const Main: React.FC<MainProps> = ({
                               : optimizerGoal === 'peakrate' ? row.bestPeak
                               : row.bestTax;
                             const isApplied = conversionSchedule && JSON.stringify(conversionSchedule) === JSON.stringify(sched);
-                            const preRet = row.convStart < inputs.retireAge;
+                            const preRet = row.convStart < householdRetireAge;
                             // Show Apply when: schedule is non-empty AND (post-retirement OR the active metric has actual pre-retirement conversions)
                             const canApply = Object.keys(sched).length > 0 && (!preRet || activeMetric.hasPreRetirementConv);
                             const cell = (m: import('../optimizer').StartAgeMetric, content: React.ReactNode) =>
@@ -1809,7 +1814,7 @@ const Main: React.FC<MainProps> = ({
         const p90Final = p90[p90.length - 1] ?? 0;
 
         const keyAges = [70, 75, 80, 85, 90, inputs.lifeExp, finalAge]
-          .filter((a, i, arr) => arr.indexOf(a) === i && a >= inputs.retireAge && a <= finalAge);
+          .filter((a, i, arr) => arr.indexOf(a) === i && a >= householdRetireAge && a <= finalAge);
 
         const srColor = (sr: number) => sr >= 90 ? '#1D9E75' : sr >= 75 ? '#BA7517' : '#C0392B';
 

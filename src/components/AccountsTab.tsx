@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { InputParams, Account, AccountOwner, AccountType, SurvivorBenefitType } from '../types';
-import { computeGuaranteedIncome } from '../financial';
+import { computeGuaranteedIncome, defaultSpouseRetireAge, effectiveSpouseRetireAge, householdRetirementAge } from '../financial';
 import TipLabel from './TipLabel';
 import TouchSlider from './TouchSlider';
 
@@ -128,7 +128,12 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
   const rothTotal = investmentAccounts.filter(a => a.type === 'roth').reduce((s, a) => s + a.balance, 0);
   const taxableTotal = investmentAccounts.filter(a => a.type === 'taxable').reduce((s, a) => s + a.balance, 0);
   const hsaTotal = investmentAccounts.filter(a => a.type === 'hsa').reduce((s, a) => s + a.balance, 0);
-  const annualGuaranteedAtRetire = computeGuaranteedIncome(inputs, inputs.retireAge);
+  const householdRetireAge = householdRetirementAge(inputs);
+  const annualGuaranteedAtRetire = computeGuaranteedIncome(inputs, householdRetireAge);
+  const defaultIncomeStartAge = (owner: AccountOwner = 'primary') =>
+    owner === 'spouse' ? (effectiveSpouseRetireAge(inputs) ?? defaultSpouseRetireAge(inputs))
+    : owner === 'joint' ? householdRetireAge
+    : inputs.retireAge;
 
   const renderBasic = () => {
     const disabled = hasAccounts;
@@ -140,6 +145,11 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
             <button onClick={() => setSubTab('advanced')} style={{ fontSize: '11px', padding: '2px 8px', background: '#1A5276', color: '#fff', border: 'none', borderRadius: '3px', cursor: 'pointer', whiteSpace: 'nowrap', marginLeft: '10px' }}>
               View accounts
             </button>
+          </div>
+        )}
+        {!disabled && (
+          <div className="note" style={{ margin: '0 0 1rem' }}>
+            Basic accounts model combined household balances and monthly contributions by account type. Use Advanced accounts when you need separate primary/spouse ownership, per-account returns, owner-specific contributions, or pension/annuity income.
           </div>
         )}
         <div style={{ opacity: disabled ? 0.4 : 1, pointerEvents: disabled ? 'none' : 'auto' }}>
@@ -258,7 +268,7 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
           </div>
           {annualGuaranteedAtRetire > 0 && (
             <div className="detail-item">
-              <div className="detail-label">Annual guaranteed income at retirement (age {inputs.retireAge})</div>
+              <div className="detail-label">Annual guaranteed income at household retirement (age {householdRetireAge})</div>
               <div className="detail-value" style={{ color: '#1D9E75' }}>{fmt(annualGuaranteedAtRetire)}/yr</div>
             </div>
           )}
@@ -309,7 +319,15 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
                     <select
                       style={{ ...inputStyle, minWidth: 88 }}
                       value={acct.owner ?? 'primary'}
-                      onChange={e => update(acct.id, { owner: e.target.value as AccountOwner })}
+                      onChange={e => {
+                        const owner = e.target.value as AccountOwner;
+                        update(acct.id, {
+                          owner,
+                          incomeStartAge: acct.incomeStartAge === undefined || acct.incomeStartAge === defaultIncomeStartAge(acct.owner ?? 'primary')
+                            ? defaultIncomeStartAge(owner)
+                            : acct.incomeStartAge,
+                        });
+                      }}
                     >
                       {(inputs.filingStatus === 'married' ? (['primary', 'spouse', 'joint'] as AccountOwner[]) : (['primary'] as AccountOwner[]))
                         .map(owner => <option key={owner} value={owner}>{OWNER_LABELS[owner]}</option>)}
@@ -427,9 +445,9 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
                       onChange={e => update(acct.id, { monthlyIncome: Number(e.target.value) || 0 })} />
                   </td>
                   <td>
-                    <input style={{ ...inputStyle, width: 52 }} type="number"
-                      value={acct.incomeStartAge ?? inputs.retireAge}
-                      onChange={e => update(acct.id, { incomeStartAge: Number(e.target.value) || inputs.retireAge })} />
+                      <input style={{ ...inputStyle, width: 52 }} type="number"
+                      value={acct.incomeStartAge ?? defaultIncomeStartAge(acct.owner ?? 'primary')}
+                      onChange={e => update(acct.id, { incomeStartAge: Number(e.target.value) || defaultIncomeStartAge(acct.owner ?? 'primary') })} />
                   </td>
                   <td>
                     <input style={{ ...inputStyle, width: 52 }} type="number" value={acct.incomeEndAge ?? ''}
@@ -533,19 +551,37 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
   return (
     <div className="chart-card">
       {/* Salary — always visible */}
-      <div className="field" style={{ marginBottom: '1rem' }}>
-        <TipLabel text="Annual salary / wages" />
-        <input
-          type="number"
-          value={inputs.salary ?? ''}
-          step={5000}
-          placeholder="0 (gross annual wages during working years)"
-          style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '3px', width: '100%' }}
-          onInput={(e) => {
-            const v = Number((e.target as HTMLInputElement).value);
-            onInputChange('salary', v || undefined as any);
-          }}
-        />
+      <div className={inputs.filingStatus === 'married' ? 'two-col' : undefined} style={{ marginBottom: '1rem' }}>
+        <div className="field">
+          <TipLabel text="Annual salary / wages" />
+          <input
+            type="number"
+            value={inputs.salary ?? ''}
+            step={5000}
+            placeholder="0 (gross annual wages during working years)"
+            style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '3px', width: '100%' }}
+            onInput={(e) => {
+              const v = Number((e.target as HTMLInputElement).value);
+              onInputChange('salary', v || undefined as any);
+            }}
+          />
+        </div>
+        {inputs.filingStatus === 'married' && (
+          <div className="field">
+            <TipLabel text="Spouse annual salary / wages" />
+            <input
+              type="number"
+              value={inputs.spouseSalary ?? ''}
+              step={5000}
+              placeholder="0 (gross annual wages during spouse working years)"
+              style={{ padding: '4px 6px', fontSize: '12px', border: '1px solid #ccc', borderRadius: '3px', width: '100%' }}
+              onInput={(e) => {
+                const v = Number((e.target as HTMLInputElement).value);
+                onInputChange('spouseSalary', v || undefined as any);
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Assumptions — always visible, independent of sub-tab */}

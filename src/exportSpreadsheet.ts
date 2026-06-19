@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { InputParams, ProjectionRow } from './types';
+import { activeSalaryAt } from './financial';
 import { getStateTaxPreset } from './stateTaxPresets';
 
 function pct(v: number) { return `${(v * 100).toFixed(2)}%`; }
@@ -21,7 +22,9 @@ function inputsSheet(inputs: InputParams): XLSX.WorkSheet {
     ['── Spouse ──', ''],
     ['Spouse age', inputs.spouseAge ?? ''],
     ['Spouse birth year', inputs.spouseBirthYear ?? ''],
+    ['Spouse retirement age', inputs.spouseRetireAge ?? ''],
     ['Spouse life expectancy', inputs.spouseLifeExp ?? ''],
+    ['Spouse annual salary / wages ($)', inputs.spouseSalary ?? ''],
     ['Spouse SS benefit type', inputs.spouseSsType ?? 'own'],
     ['Spouse SS claim age', inputs.spouseSsAge ?? 67],
     ['Spouse SS at 62 ($/mo)', inputs.spouseSs62 ?? ''],
@@ -168,7 +171,7 @@ function incomeSheet(rows: ProjectionRow[], inputs: InputParams): XLSX.WorkSheet
     'Net Spendable ($)',
   ];
   const data = rows.map(r => {
-    const salary = r.age < inputs.retireAge ? (inputs.salary ?? 0) : 0;
+    const salary = activeSalaryAt(inputs, r.age);
     const totalIn = salary + r.ss + r.spouseSs + r.pension + r.rmd + r.conv + r.tradW + r.rothW + r.taxableW + r.hsaW;
     const net = totalIn - r.totalSpending - r.totalTax;
     const netSpendable = totalIn - r.conv - r.totalSpending - (r.totalTax - r.convTax);

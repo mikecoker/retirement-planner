@@ -1,4 +1,4 @@
-import type { AccountType, InputParams, ProjectionOptions, ProjectionRow } from './types';
+import type { AccountOwner, AccountType, InputParams, ProjectionOptions, ProjectionRow } from './types';
 import { getStateTaxPreset } from './stateTaxPresets';
 
 // IRS Uniform Lifetime Table (RMD divisors by age, SECURE 2.0)
@@ -31,6 +31,61 @@ export function effectiveSpouseAge(params: InputParams): number | undefined {
 function spouseAgeAt(params: InputParams, age: number): number | undefined {
   const spouseAge = effectiveSpouseAge(params);
   return spouseAge !== undefined ? spouseAge + (age - params.age) : undefined;
+}
+
+export function effectiveSpouseRetireAge(params: InputParams): number | undefined {
+  if (params.filingStatus !== 'married') return undefined;
+  return params.spouseRetireAge;
+}
+
+export function defaultSpouseRetireAge(params: InputParams): number {
+  return spouseAgeAt(params, params.retireAge) ?? params.retireAge;
+}
+
+function primaryAgeWhenSpouseIs(params: InputParams, spouseAge: number): number {
+  const spouseStartAge = effectiveSpouseAge(params);
+  return spouseStartAge !== undefined ? params.age + (spouseAge - spouseStartAge) : params.retireAge;
+}
+
+export function householdRetirementAge(params: InputParams): number {
+  const spouseRetireAge = effectiveSpouseRetireAge(params);
+  if (spouseRetireAge === undefined) return params.retireAge;
+  const spouseRetirePrimaryAge = spouseRetireAge !== undefined
+    ? primaryAgeWhenSpouseIs(params, spouseRetireAge)
+    : params.retireAge;
+  return Math.max(params.retireAge, spouseRetirePrimaryAge);
+}
+
+function ownerRetirementAge(params: InputParams, owner: AccountOwner): number {
+  if (owner === 'spouse') return params.spouseRetireAge ?? defaultSpouseRetireAge(params);
+  if (owner === 'joint') return householdRetirementAge(params);
+  return params.retireAge;
+}
+
+function ownerRetirementPrimaryAge(params: InputParams, owner: AccountOwner): number {
+  if (owner === 'spouse') {
+    const spouseRetireAge = effectiveSpouseRetireAge(params);
+    return spouseRetireAge !== undefined ? primaryAgeWhenSpouseIs(params, spouseRetireAge) : params.retireAge;
+  }
+  if (owner === 'joint') return householdRetirementAge(params);
+  return params.retireAge;
+}
+
+function ownerSalaryAt(params: InputParams, owner: AccountOwner, age: number): number {
+  if (owner === 'primary') return age < params.retireAge ? (params.salary ?? 0) : 0;
+  if (owner === 'spouse') {
+    const spouseRetireAge = effectiveSpouseRetireAge(params);
+    const spouseAge = spouseAgeAt(params, age);
+    if (spouseRetireAge !== undefined) {
+      return spouseAge !== undefined && spouseAge < spouseRetireAge ? (params.spouseSalary ?? 0) : 0;
+    }
+    return age < params.retireAge ? (params.spouseSalary ?? 0) : 0;
+  }
+  return ownerSalaryAt(params, 'primary', age) + ownerSalaryAt(params, 'spouse', age);
+}
+
+export function activeSalaryAt(params: InputParams, age: number): number {
+  return ownerSalaryAt(params, 'joint', age);
 }
 
 export function inferredSpouseBirthYear(params: InputParams): number | undefined {
@@ -476,7 +531,7 @@ export function computeGuaranteedIncome(params: InputParams, age: number): numbe
       : owner === 'spouse'
         ? primaryAlive
         : false;
-    const startAge = acct.incomeStartAge ?? (owner === 'spouse' && spouseStartAge !== undefined ? spouseStartAge : params.retireAge);
+    const startAge = acct.incomeStartAge ?? ownerRetirementAge(params, owner);
     const defaultEndAge = owner === 'joint'
       ? projEnd
       : owner === 'spouse'
@@ -549,6 +604,7 @@ export function runProjection(
   type InvestmentBucket = {
     id: string;
     type: InvestmentAccountType;
+    owner: AccountOwner;
     balance: number;
     annualContrib: number;
     growthRate?: number;
@@ -561,6 +617,7 @@ export function runProjection(
     .map(a => ({
       id: a.id,
       type: a.type,
+      owner: a.owner ?? 'primary',
       balance: a.balance,
       annualContrib: a.annualContrib ?? 0,
       growthRate: a.growthRate,
@@ -595,6 +652,7 @@ export function runProjection(
         accountBuckets.push({
           id: `synthetic-${type}`,
           type,
+          owner: 'joint',
           balance: total,
           annualContrib: 0,
           growthRate: defaultGrowthForType(type, scenario),
@@ -634,10 +692,11 @@ export function runProjection(
       .reduce((s, a) => s + (a.costBasis ?? a.balance), 0);
   }
 
-  const retireIn = Math.max(1, params.retireAge - params.age);
+  const householdRetireAge = householdRetirementAge(params);
+  const retireIn = Math.max(1, householdRetireAge - params.age);
   const birthYear = inferredBirthYear(params);
   const spendingPhaseMultiplier = (age: number): number => {
-    if (!params.spendingSmileEnabled || age < params.retireAge) return 1;
+    if (!params.spendingSmileEnabled || age < householdRetireAge) return 1;
     const lateAge = params.lateRetirementAge ?? 75;
     const adjustment = age >= lateAge
       ? (params.lateRetirementSpendingChange ?? 0)
@@ -707,7 +766,7 @@ export function runProjection(
       ssFactor,
     });
   }
-  const retireFactors = factorAtAge.get(params.retireAge) ?? {
+  const retireFactors = factorAtAge.get(householdRetireAge) ?? {
     inflationFactor: 1,
     expenseFactor: 1,
     healthcareFactor: 1,
@@ -796,13 +855,14 @@ export function runProjection(
       let tradContribAmt: number, rothContribAmt: number;
       let taxableContribAmt: number, hsaContribAmt: number, employerMatchAmt: number;
       if (hasInvestmentAccounts) {
-        const salary = params.salary ?? 0;
         tradContribAmt = 0;
         rothContribAmt = 0;
         taxableContribAmt = 0;
         hsaContribAmt = 0;
         employerMatchAmt = 0;
         for (const bucket of accountBuckets) {
+          if (age >= ownerRetirementPrimaryAge(params, bucket.owner)) continue;
+          const salary = ownerSalaryAt(params, bucket.owner, age);
           const contribution = bucket.annualContrib;
           if (bucket.type === 'traditional') tradContribAmt += contribution;
           if (bucket.type === 'roth') rothContribAmt += contribution;
@@ -821,7 +881,9 @@ export function runProjection(
       } else {
         const requestedTrad = params.tradContrib * 12;
         const requestedRoth = params.rothContrib * 12;
-        const retirementLimit = Math.min(retirementContributionLimit(age), params.salary ?? retirementContributionLimit(age));
+        const activeSalary = activeSalaryAt(params, age);
+        const hasWageLimit = params.salary !== undefined || params.spouseSalary !== undefined;
+        const retirementLimit = Math.min(retirementContributionLimit(age), hasWageLimit ? activeSalary : retirementContributionLimit(age));
         const requestedRetirement = requestedTrad + requestedRoth;
         const retirementScale = requestedRetirement > retirementLimit && requestedRetirement > 0
           ? retirementLimit / requestedRetirement
@@ -843,7 +905,7 @@ export function runProjection(
       rothBasis += rothContribAmt;
       basis += taxableContribAmt;
 
-      const annualSalary = params.salary ?? 0;
+      const annualSalary = activeSalaryAt(params, age);
 
       // Full income tax on salary — standard deduction + progressive brackets
       if (annualSalary > 0 || investmentOrdinaryIncome > 0 || qualifiedDividends > 0 || ltcgAmount > 0) {
@@ -1147,12 +1209,12 @@ export function runProjection(
     }
 
     const portfolioValue = trad + roth + taxable + hsa;
-    const salaryInRow = age < params.retireAge ? (params.salary ?? 0) : 0;
+    const salaryInRow = activeSalaryAt(params, age);
     const taxableRmdForRow = rmd - qcd;
     const ordinaryForTax = taxableRmdForRow + conv + tradW + ssTaxable + salaryInRow + pensionInc + investmentOrdinaryIncome;
     const mRate = marginalRate(ordinaryForTax, filingStatusForYear, num65, inflFactor);
     const grossIncome = taxableRmdForRow + conv + tradW + ssInc + spouseSsInc + investmentOrdinaryIncome + qualifiedDividends + ltcgAmount + salaryInRow + pensionInc;
-    const ltcgTaxFinal = (age >= params.retireAge) ? (() => {
+    const ltcgTaxFinal = (age >= householdRetireAge) ? (() => {
       // Re-derive ltcgTax for eRate calculation — already computed in distribution block
       // We need it in scope; use the value already captured in the closure via ltcgAmount
       if (ltcgAmount + qualifiedDividends <= 0) return 0;
@@ -1160,7 +1222,7 @@ export function runProjection(
       const ordTaxable = Math.max(0, ordinaryForTax - stdDed);
       return estimateLtcgTax(ltcgAmount + qualifiedDividends, ordTaxable, filingStatusForYear, inflFactor);
     })() : 0;
-    const eRate = grossIncome > 0 && age >= params.retireAge
+    const eRate = grossIncome > 0 && age >= householdRetireAge
       ? ((federalTax + stateTax + ltcgTaxFinal) / grossIncome)
       : 0;
 
@@ -1200,7 +1262,7 @@ export function runProjection(
       ltcExpenses: yearLtcExpense,
       discretionaryExpenses: yearDiscExpense,
       totalSpending: yearExpense + yearHcExpense + yearDiscExpense + yearLtcExpense,
-      withdrawalRate: portfolioValue > 0 && age >= params.retireAge
+      withdrawalRate: portfolioValue > 0 && age >= householdRetireAge
         ? (rmd + tradW + rothW + taxableW + hsaW) / portfolioValue
         : 0,
       portfolioValue: Math.round(portfolioValue),
