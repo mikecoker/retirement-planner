@@ -89,7 +89,7 @@ function buildStrategies(convStart: number): ConversionStrategy[] {
       if (until < convStart) continue;
       strategies.push({
         name: `Fill ${BRACKET_NAMES[b]} bracket until age ${until}`,
-        description: `Convert enough each year to fill the ${BRACKET_NAMES[b]} bracket, from age ${convStart} until age ${until}.`,
+        description: `Modeled conversions fill the ${BRACKET_NAMES[b]} bracket from age ${convStart} until age ${until}.`,
         targetBracket: b as 0 | 1 | 2 | 3,
         maxAnnual: 0,
         untilAge: until,
@@ -465,7 +465,7 @@ function evaluateCurrentSettings(params: InputParams): StrategyResult {
 //
 // The optimizer is fully independent of sidebar conversion settings.
 // It explores the strategy space (bracket × until-age) and tells you
-// the optimal combination.
+// the lowest or highest modeled outcome for the selected comparison goal.
 
 export function runOptimizer(params: InputParams, minConvStartAge?: number): OptimizationOutput {
   const effectiveMin = Math.max(params.age + 1, minConvStartAge ?? params.age + 1);
@@ -491,7 +491,7 @@ export function runOptimizer(params: InputParams, minConvStartAge?: number): Opt
     : 1;
   results.push(evaluateSchedule(params, greedySchedule, {
     name: 'Per-year optimizer',
-    description: 'Per-year optimization: converts when current marginal rate < expected future rate on RMDs.',
+    description: 'Year-by-year comparison: models conversions when the current marginal rate is below the expected future rate on RMDs.',
     targetBracket: greedyBracket,
     maxAnnual: 0,
     untilAge: 72,
@@ -502,7 +502,7 @@ export function runOptimizer(params: InputParams, minConvStartAge?: number): Opt
   const smootherSchedule = buildSmootherSchedule(params, noConvBaseline, effectiveMin);
   results.push(evaluateSchedule(params, smootherSchedule, {
     name: 'Income smoother',
-    description: 'Converts each year to match projected RMD-year income, equalizing marginal rates across all of retirement.',
+    description: 'Models annual conversions to align projected RMD-year income and smooth marginal rates across retirement.',
     targetBracket: 2,
     maxAnnual: 0,
     untilAge: 72,
@@ -517,8 +517,8 @@ export function runOptimizer(params: InputParams, minConvStartAge?: number): Opt
   const bestByTax = [...eligible].sort((a, b) => a.lifetimeTotalTax - b.lifetimeTotalTax)[0];
   const bestByPortfolio = [...eligible].sort((a, b) => b.terminalAfterTax - a.terminalAfterTax)[0];
 
-  // "Smooth brackets" always recommends the Income smoother — it was built for this goal.
-  // Fall back to lowest-peak grid strategy only if smoother somehow raises the peak rate.
+  // "Smooth brackets" uses the Income smoother because it was built for this goal.
+  // Fall back to the lowest-peak grid strategy only if smoother somehow raises the peak rate.
   const smootherResult = eligible.find(r => r.strategy.name === 'Income smoother')!;
   const gridBestByPeak = [...eligible.filter(r => r.strategy.name !== 'Income smoother')]
     .sort((a, b) =>
@@ -535,7 +535,7 @@ export function runOptimizer(params: InputParams, minConvStartAge?: number): Opt
   const best = bestByTax; // backward compat
   const baseline = results.find(r => r.strategy.name === 'No conversions')!;
 
-  // 6. Derive recommended params from the best schedule
+  // 6. Derive schedule summary params from the lowest-tax schedule
   const scheduleValues = Object.values(best.schedule);
   const scheduleYears = Object.keys(best.schedule).map(Number);
   const avgAnnual = scheduleValues.length > 0

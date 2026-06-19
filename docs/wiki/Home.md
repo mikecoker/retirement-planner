@@ -31,7 +31,7 @@ The app is client-side. Calculations run in the browser. Your plan data is store
 
 Because local browser storage can be cleared by browser settings, privacy tools, or device cleanup, export important plans regularly.
 
-## Recommended First Workflow
+## Suggested First Workflow
 
 1. Create or rename a plan.
 2. Fill in About You: age, retirement age, life expectancy, filing status, inflation, and tax settings.
@@ -45,4 +45,4 @@ Because local browser storage can be cleared by browser settings, privacy tools,
 
 ## Important Disclaimer
 
-Retirement Planner is an open-source planning tool, not professional financial, tax, legal, or investment advice. Tax law, market behavior, Social Security rules, healthcare costs, and personal circumstances can change. Validate important decisions with qualified professionals.
+Retirement Planner is an open-source educational planning model, not professional financial, tax, legal, or investment advice. Tax law, market behavior, Social Security rules, healthcare costs, and personal circumstances can change. Validate important decisions with qualified professionals.

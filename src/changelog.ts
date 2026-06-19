@@ -1,4 +1,4 @@
-export const APP_VERSION = '0.1.2';
+export const APP_VERSION = '0.1.3';
 
 export interface ChangelogEntry {
   hash: string;
@@ -7,6 +7,21 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    hash: 'unreleased',
+    date: '2026-06-19',
+    title: 'Softened Roth Optimizer wording, added educational-model disclosures, and surfaced modeled tax years.',
+  },
+  {
+    hash: 'a001efb',
+    date: '2026-06-17',
+    title: 'Fixed Per-year comparison mode so it shows the per-year Roth conversion scenario instead of the lowest-tax scenario.',
+  },
+  {
+    hash: 'd34e671',
+    date: '2026-06-17',
+    title: 'Defaulted unset spouse age consistently across projections, Monte Carlo runs, and spouse Social Security modeling.',
+  },
   {
     hash: '689eea9',
     date: '2026-06-13',

@@ -178,7 +178,7 @@ Net cash flow near zero can be normal because the model draws what is needed to 
 
 ## Tool: Roth Optimizer
 
-The Roth Optimizer compares candidate conversion strategies and can recommend a schedule based on the selected goal.
+The Roth Optimizer compares candidate conversion strategies and shows modeled schedules based on the selected comparison goal.
 
 Goals may include:
 
@@ -187,9 +187,9 @@ Goals may include:
 - Smoothing high future tax rates.
 - Evaluating per-year opportunistic conversions.
 
-Review optimizer output carefully. A strategy that minimizes lifetime taxes may not maximize terminal wealth, and a strategy that maximizes terminal wealth may require paying more tax earlier.
+Review optimizer output carefully. A scenario with lower modeled lifetime taxes may not show the largest terminal wealth, and a scenario with larger terminal wealth may require paying more tax earlier.
 
-After applying an optimizer schedule, return to Results pages to inspect balances, taxes, RMDs, and cash flow.
+After using an optimizer schedule in the projection, return to Results pages to inspect balances, taxes, RMDs, and cash flow.
 
 ## Tool: Monte Carlo
 
