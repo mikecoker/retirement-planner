@@ -315,6 +315,7 @@ const App: React.FC = () => {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [dollarMode, setDollarMode] = useState<DollarMode>('nominal');
   const [changelogOpen, setChangelogOpen] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(() => localStorage.getItem('retirement-planner-nav-collapsed') === 'true');
   const [metrics, setMetrics] = useState<{ m1: string; m2: string; m3: string; m4: string; m5: string }>({
     m1: '—', m2: '—', m3: '—', m4: '—', m5: '—',
   });
@@ -360,6 +361,10 @@ const App: React.FC = () => {
   useEffect(() => {
     savePlans(plans, activePlanId);
   }, [plans, activePlanId]);
+
+  useEffect(() => {
+    localStorage.setItem('retirement-planner-nav-collapsed', String(navCollapsed));
+  }, [navCollapsed]);
 
   // Run projection whenever inputs or schedule change
   useEffect(() => {
@@ -565,7 +570,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="app">
+    <div className={`app${navCollapsed ? ' nav-collapsed' : ''}`}>
       <div className="header">
         <div className="dollar-mode" aria-label="Dollar display mode">
           <span className="dollar-mode-label">Dollars</span>
@@ -628,6 +633,15 @@ const App: React.FC = () => {
       </div>
 
       <nav className="left-nav">
+        <button
+          type="button"
+          className="nav-collapse-toggle"
+          onClick={() => setNavCollapsed(collapsed => !collapsed)}
+          aria-label={navCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+          title={navCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+        >
+          {navCollapsed ? '›' : '‹'}
+        </button>
         <div className="brand">
           <span className="brand-mark"><span /></span>
           <span>Retirement Planner</span>

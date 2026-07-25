@@ -50,6 +50,39 @@ const btnStyle = (color: string): React.CSSProperties => ({
   border: 'none', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
 });
 
+const parseCurrency = (value: string): number => {
+  const parsed = Number(value.replace(/[$,\s]/g, ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const CurrencyInput: React.FC<{
+  value: number | undefined;
+  label: string;
+  placeholder?: string;
+  onChange: (value: number) => void;
+}> = ({ value, label, placeholder, onChange }) => {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const displayValue = draft ?? (value ? value.toLocaleString() : '');
+  return (
+    <input
+      style={inputStyle}
+      type="text"
+      inputMode="decimal"
+      value={displayValue}
+      placeholder={placeholder}
+      aria-label={label}
+      onFocus={() => setDraft(value ? String(value) : '')}
+      onChange={e => {
+        const next = e.target.value;
+        setDraft(next);
+        onChange(parseCurrency(next));
+      }}
+      onBlur={() => setDraft(null)}
+    />
+  );
+};
+
 const subTabBtn = (active: boolean): React.CSSProperties => ({
   padding: '7px 18px',
   fontSize: '13px',
@@ -334,12 +367,20 @@ export const AccountsTab: React.FC<AccountsTabProps> = ({ inputs, onAccountsChan
                     </select>
                   </td>
                   <td>
-                    <input style={inputStyle} type="number" value={acct.balance || ''} step={1000}
-                      onChange={e => update(acct.id, { balance: Number(e.target.value) || 0 })} />
+                    <CurrencyInput
+                      value={acct.balance}
+                      label="Balance"
+                      placeholder="0"
+                      onChange={balance => update(acct.id, { balance })}
+                    />
                   </td>
                   <td>
-                    <input style={inputStyle} type="number" value={acct.annualContrib || ''} step={500} placeholder="0"
-                      onChange={e => update(acct.id, { annualContrib: Number(e.target.value) || 0 })} />
+                    <CurrencyInput
+                      value={acct.annualContrib}
+                      label="Annual contribution"
+                      placeholder="0"
+                      onChange={annualContrib => update(acct.id, { annualContrib })}
+                    />
                   </td>
                   <td>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>

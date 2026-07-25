@@ -193,6 +193,7 @@ const Main: React.FC<MainProps> = ({
     mc: 'Monte Carlo',
   };
   const householdRetireAge = householdRetirementAge(inputs);
+  const birthYear = inputs.birthYear ?? new Date().getFullYear() - inputs.age;
   const yearsUntilRetirement = Math.max(0, householdRetireAge - inputs.age);
   const spouseAge = effectiveSpouseAge(inputs);
   const horizonEndAge = Math.max(
@@ -761,6 +762,7 @@ const Main: React.FC<MainProps> = ({
               <thead>
                 <tr>
                   <th>Age</th>
+                  <th>Year</th>
                   <th>Traditional IRA</th>
                   <th>Roth IRA</th>
                   <th>Taxable</th>
@@ -781,6 +783,7 @@ const Main: React.FC<MainProps> = ({
                         {r.age === spouseRetirePrimaryAge && <span style={{ marginLeft: 6, fontSize: 10, color: '#378ADD', fontWeight: 600 }}>SPOUSE RETIRES</span>}
                         <SurvivorTag age={r.age} />
                       </td>
+                      <td>{birthYear + (r.age - inputs.age)}</td>
                       <td>{displayFmt(r.trad, r.age)}</td>
                       <td>{displayFmt(r.roth, r.age)}</td>
                       <td>{displayFmt(r.taxable, r.age)}</td>
